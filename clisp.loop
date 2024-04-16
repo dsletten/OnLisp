@@ -1,0 +1,46 @@
+(macroexpand-1 ' (loop for i from 0 below n
+                       for elt in l
+                       for tail on l
+                       collect elt into q
+                       finally (return (values q (rest tail)))))
+
+(macrolet ((loop-finish () (system::loop-finish-error)))
+  (block nil
+    (let ((i 0)
+          (#:limit-8783 n))
+      (progn
+        (let ((#:list-8784 nil))
+          (let nil
+            (let ((elt nil))
+              (let ((tail nil))
+                (let nil
+                  (let ((#:q8785 nil)
+                        (q nil))
+                    (macrolet ((loop-finish () '(go system::end-loop)))
+                      (tagbody
+                         (setq #:list-8784 l)
+                         (setq tail l)
+                       system::begin-loop
+                         (when (>= i #:limit-8783)
+                           (loop-finish))
+                         (when (endp #:list-8784)
+                           (loop-finish))
+                         (setq elt (car #:list-8784))
+                         (when (atom tail)
+                           (loop-finish))
+                         (progn
+                           (let ((#:addlist-8786 (list elt)))
+                             (if q
+                                 (setf #:q8785 (setf (cdr #:q8785) #:addlist-8786))
+                                 (setf #:q8785 (setf q #:addlist-8786)))))
+                         (psetq i (+ i 1))
+                         (psetq #:list-8784 (cdr #:list-8784))
+                         (psetq tail (cdr tail))
+                         (go system::begin-loop)
+                       system::end-loop
+                         (macrolet ((loop-finish ()
+                                       (system::loop-finish-warn)
+                                       '(go system::end-loop)))
+                           (progn
+                             (return (values q (rest tail)))))))))))))))))
+

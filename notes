@@ -1,0 +1,1389 @@
+Chapter 2
+============================================================================
+230521 日
+§2.3
+13 页 apply vs. funcall
+- First arg is "function designator": symbol or function object
+
+Graham shows these as having "the same effect":
+(+ 1 2)
+(apply #'+ '(1 2))
+(apply (symbol-function '+) '(1 2))
+(apply #'(lambda (x y) (+ x y)) '(1 2))
+
+However, they are not equivalent. Consider a different context:
+[Can't rebind `+`: http://www.lispworks.com/documentation/lw50/CLHS/Body/11_abab.htm]
+(defun add (&rest args)
+  (apply #'+ args))
+
+(flet ((add (&rest args)
+         (apply #'* args)))
+  (add 1 2))
+
+(flet ((add (&rest args)
+         (apply #'* args)))
+  (apply #'add '(1 2)))
+
+(flet ((add (&rest args)
+         (apply #'* args)))
+  (apply (symbol-function 'add) '(1 2)))
+
+(apply '+ '(1 2))
+
+(flet ((add (&rest args)
+         (apply #'* args)))
+  (apply 'add '(1 2)))
+
+Also
+(apply #'+ '(1 2 3))
+(apply #'(lambda (x y) (+ x y)) '(1 2 3))
+
+Variations:
+(apply #'+ 1 '(2 3))
+(apply #'+ 1 2'(3))
+(apply #'+ 1 2 3 '())
+
+(let ((add #'+))
+  (apply add '(1 2 3)))
+----------------------------------------------------------------------------
+另见 funcall
+(funcall #'+ 1 2)
+(funcall (symbol-function '+) 1 2)
+(funcall #'(lambda (x y) (+ x y)) 1 2)
+
+Possible definition:
+(defun funcall (f &rest args)
+  (apply f args))
+
+CLHS says:
+(funcall function arg1 arg2 ...)  ==  (apply function arg1 arg2 ... nil)  ==  (apply function (list arg1 arg2 ...))
+
+(No need for FUNCALL in Scheme/Clojure)
+(defun foo (x)
+  (+ x 9))
+
+(defun bar (f x)
+  (funcall f x))
+
+(bar #'foo 8) => 17
+
+vs.
+
+(defn foo [x]
+  (+ x 9))
+
+(defn bar [f x]
+  (f x))
+
+(bar foo 8) => 17
+----------------------------------------------------------------------------
+Side note:
+(cons 'a '(b c)) => (A B C)
+(list 'a 'b 'c) => (A B C)
+(list* 'a 'b 'c '()) => (A B C)
+
+CLHS:
+list* is like list except that the last argument to list becomes the car of the last cons constructed, while the last argument to list* becomes the cdr of the last cons constructed. Hence, any given call to list* always produces one fewer conses than a call to list with the same number of arguments.
+
+If the last argument to list* is a list, the effect is to construct a new list which is similar, but which has additional elements added to the front corresponding to the preceding arguments of list*.
+----------------------------------------------------------------------------
+Head scratchers: (Lisp I APPLY notes 279 页)
+(apply #'apply #'+ 7 9 '() '())
+(apply #'apply (list #'+ 7 9 '()))
+(apply #'apply '(+ (7 9)))
+(apply #'apply #'+ '((7 9)))
+vs.
+(apply #'apply '(#'+ (7 9)))
+
+(sdraw '(apply #'apply '(+ (7 9))))
+
+[*|*]--->[*|*]-------------------->[*|*]--->NIL
+ |        |                         |
+ v        v                         v
+APPLY    [*|*]----->[*|*]--->NIL   [*|*]--->[*|*]--->NIL
+          |          |              |        |
+          v          v              v        v
+         FUNCTION   APPLY          QUOTE    [*|*]--->[*|*]--->NIL
+                                             |        |
+                                             v        v
+                                             +       [*|*]--->[*|*]--->NIL
+                                                      |        |
+                                                      v        v
+                                                      7        9
+
+(sdraw '(apply #'apply '(#'+ (7 9))) :display-width 200)
+
+[*|*]--->[*|*]-------------------->[*|*]--->NIL
+ |        |                         |
+ v        v                         v
+APPLY    [*|*]----->[*|*]--->NIL   [*|*]--->[*|*]--->NIL
+          |          |              |        |
+          v          v              v        v
+         FUNCTION   APPLY          QUOTE    [*|*]-------------------->[*|*]--->NIL
+                                             |                         |
+                                             v                         v
+                                            [*|*]----->[*|*]--->NIL   [*|*]--->[*|*]--->NIL
+                                             |          |              |        |
+                                             v          v              v        v
+                                            FUNCTION    +              7        9
+
+(sdraw '(#'+ (7 9)))
+
+[*|*]-------------------->[*|*]--->NIL
+ |                         |
+ v                         v
+[*|*]----->[*|*]--->NIL   [*|*]--->[*|*]--->NIL
+ |          |              |        |
+ v          v              v        v
+FUNCTION    +              7        9
+
+(sdraw (list #'+ '(7 9)))
+
+[*|*]---------->[*|*]--->NIL
+ |               |
+ v               v
+#<FUNCTION +>   [*|*]--->[*|*]--->NIL
+                 |        |
+                 v        v
+                 7        9
+----------------------------------------------------------------------------
+240414 日
+(defun remove-if (f l)
+  (cond ((endp l) '())
+        ((funcall f (first l)) (remove-if f (rest l)))
+        (t (cons (first l) (remove-if f (rest l)))) ))
+
+(defun remove-if (f l)
+  (if (endp l)
+      '()
+      (destructuring-bind (first rest) l
+        (if (funcall f first)
+            (remove-if f rest)
+            (cons first (remove-if f rest)))) ))
+
+(clojure.repl/source remove)
+(defn remove
+  "Returns a lazy sequence of the items in coll for which
+  (pred item) returns logical false. pred must be free of side-effects.
+  Returns a transducer when no collection is provided."
+  {:added "1.0"
+   :static true}
+  ([pred] (filter (complement pred)))
+  ([pred coll]
+     (filter (complement pred) coll)))
+============================================================================
+230613 火
+§2.5
+Scope
+;;;
+;;;    Default lexical
+;;;
+(let ((y 7))
+  (defun g (x)
+    (list x y)))
+
+(let ((y 5))
+  (g 3))
+
+; caught STYLE-WARNING:
+;   The variable Y is defined but never used.
+
+
+
+;;;
+;;;    Special when declared
+;;;
+(let ((y 7))
+  (declare (special y))
+  (defun f (x)
+    (declare (special y))
+    (list x y)))
+
+(let ((y 5))
+  (declare (special y))
+  (f 3))
+
+
+(defun f* (x) (declare (special y)) (list x y))
+(let ((y 9)) (declare (special y)) (f* 8))
+
+
+
+
+
+;;;
+;;;    Persistent DECLAIM
+;;;
+(defvar *y* 8)
+
+(let ((*y* 7))
+  (defun h (x)
+    (list x *y*)))
+
+(let ((*y* 5))
+  (h 3))
+
+(macroexpand-1 '(defvar *y* 8))
+(PROGN (DECLAIM (SPECIAL *Y*)) (OR (BOUNDP '*Y*) (SETQ *Y* 8))
+       (RECORD-SOURCE-FILE '*Y* :TYPE :VARIABLE) '*Y*)
+T
+
+
+;;;
+;;;    Error
+;;;
+(defun p (x) (list x y))
+; caught WARNING:
+;   undefined variable: COMMON-LISP-USER::Y
+; 
+
+(let ((y 9)) (declare (special y)) (p 8))
+
+(let ((y 9)) (p 8))
+
+
+----------------------------------------------------------------------------
+Notes pg. 624
+(defun f (x)
+  (labels ((g ()
+             (- x 2))
+           (h (x)
+             (/ x (g))))
+    (+ (g) (h (* 4 x)))) )
+
+(f 8) => 34/3
+(f 1) => -5
+
+(+ (g) (h (* 4 x)))
+(+ (- x 2) (h (* 4 x)))
+(+ (- x 2) (/ (* 4 x) (g)))
+(+ (- x 2) (/ (* 4 x) (- x 2)))
+          4x
+x - 2 + ------
+        x - 2
+
+(defun f* (x)
+  (declare (special x))
+  (labels ((g* ()
+             (declare (special x))
+             (- x 2))
+           (h* (x)
+             (declare (special x))
+             (/ x (g*))))
+    (+ (g*) (h* (* 4 x)))) )
+
+(f* 8) => 106/15
+(f* 1) => 1
+
+(+ (g*) (h* (* 4 x)))
+(+ (- x 2) (h* (* 4 x)))
+(+ (- x 2) (/ x' (g*)))
+(+ (- x 2) (/ x' (- x' 2)))
+          x'
+x - 2 + ------
+        x' - 2
+
+x' = 4x
+
+          4x
+x - 2 + ------
+        4x - 2
+----------------------------------------------------------------------------
+(defun make-counter (x)
+  #'(lambda ()
+      (incf x)))
+
+(defun make-counter* (x)
+  (declare (special x))
+  #'(lambda ()
+      (incf x)))
+
+(defvar *c1* (make-counter 8))
+(defvar *c2* (make-counter 2))
+(defvar *c3* (make-counter* 8))
+(defvar *c4* (make-counter* 2))
+
+(funcall *c1*) => 9
+(funcall *c1*) => 10
+(funcall *c1*) => 11
+(funcall *c2*) => 3
+(funcall *c2*) => 4
+(funcall *c1*) => 12
+
+(funcall *c3*)
+
+*** - SETQ: variable X has no value
+The following restarts are available:
+USE-VALUE      :R1      Input a value to be used instead of X.
+STORE-VALUE    :R2      Input a new value for X.
+ABORT          :R3      Abort main loop
+
+(let ((x 8)) (declare (special x)) (print (funcall *c3*)) (print (funcall *c3*)) (print (funcall *c3*)))
+
+9 
+10 
+11 
+11
+(let ((x 2)) (declare (special x)) (print (funcall *c3*)) (print (funcall *c3*)) (print (funcall *c3*)))
+
+3 
+4 
+5 
+5
+(let ((x 2)) (declare (special x)) (print (funcall *c3*)) (print (funcall *c4*)) (print (funcall *c3*)) (print (funcall *c4*)))
+
+3 
+4 
+5 
+6 
+6
+----------------------------------------------------------------------------
+Only one special variable ever exists at a given moment.
+(defun foo (x)
+  #'(lambda () (print x)))
+
+(defun bar (x)
+  (declare (special x))
+  #'(lambda () (print x)))
+
+(defvar *lexical* (list (foo 2) (foo 3) (foo 4)))
+(defvar *special* (list (bar 2) (bar 3) (bar 4)))
+
+(dolist (lexical *lexical*) (funcall lexical))
+(let ((x 999))
+  (declare (special x))
+  (dolist (special *special*)
+    (funcall special)))
+
+
+(let ((x 999)
+      (y 4)
+      (z 88))
+  (declare (special x))
+  (dolist (special *special*)
+    (funcall special))
+
+
+============================================================================
+230622 木
+§2.7
+(defun count-instances (obj lists)
+  (labels ((instances-in (list)
+             (if (consp list)
+                 (+ (if (eq (first list) obj) 1 0)
+                    (instances-in (rest list)))
+                 0)))
+    (mapcar #'instances-in lists)))
+
+(count-instances 'a '((a b c) (d a r p a) (a a)))
+(1 2 2)
+(count-instances 'a '((a b c) (d a r p a) (a (a) a)))
+(1 2 2)
+(count-instances 'a '((a b c) (d a r p a) (a a) a))
+(1 2 2 0)
+
+- Does not count top-level elements
+- Does not count nested elements within each top-level list
+
+Poor example to highlight LABELS??
+(defun count-instances (obj lists)
+  (mapcar #'(lambda (list) (count obj list)) lists))
+
+Not identical...
+(count-instances 'a '((a b c) (d a r p a) (a a)))
+(1 2 2)
+(count-instances 'a '((a b c) (d a r p a) (a (a) a)))
+(1 2 2)
+(count-instances 'a '((a b c) (d a r p a) (a a) a))
+> Error: The value A is not of the expected type SEQUENCE.
+> While executing: CCL::SEQUENCE-TYPE, in process listener(1).
+> Type :POP to abort, :R for a list of available restarts.
+> Type :? for other options.
+
+(defun tree-count-instances (obj tree)
+  (cond ((eq tree obj) 1)
+        ((atom tree) 0)
+        (t (+ (tree-count-instances obj (first tree))
+              (tree-count-instances obj (rest tree)))) ))
+
+(tree-count-instances 'a '((a b c) (d a r p a) (a a)))
+5
+(tree-count-instances 'a '((a b c) (d a r p a) (a (a) a)))
+6
+(tree-count-instances 'a '((a b c) (d a r p a) (a a) a))
+6
+
+
+见 Slade ch. 4 exercises
+(defun count-occurrences (obj tree)
+  (cond ((null tree) 0)
+        ((atom tree) (if (eq obj tree) 1 0))
+        (t (+ (count-occurrences obj (car tree))
+              (count-occurrences obj (cdr tree)))) ))
+
+(deftest test-count-occurrences ()
+  (check
+   (= (count-occurrences 'a '(a ((a b)) d c (a))) 3)
+   (= (count-occurrences 'z '(a ((a b)) d c (a))) 0)))
+
+Notes pg. 293
+((lambda (obj lists) (labels ((instances-in (list) (if (consp list) (+ (if (eq (first list) obj) 1 0) (instances-in (rest list))) 0)))
+  (mapcar #'instances-in lists))) 'a '((a b c) (d a r p a) (d a r) (a a)))
+
+=> (1 2 1 2)
+
+
+(defun f (x) #'(lambda () ...  x ...))
+(defun g () #'(lambda (x) ...  x ...))
+
+eq?
+============================================================================
+230704 火
+§2.8 Tail Recursion (TCO)
+
+(defun our-length (lst)
+  (if (null lst)
+      0
+      (1+ (our-length (cdr lst)))))
+
+(disassemble #'our-length)
+
+I. LABELS
+(defun our-length (lst)        ;   <-- Not recursive!
+  (labels ((rec (lst acc)
+             (if (null lst)
+                 acc
+                 (rec (cdr lst) (1+ acc)))))
+    (rec lst 0)))
+
+II. Optional accumulator
+(defun our-length (lst &optional (acc 0))
+  (if (null lst)
+      acc
+      (our-length (cdr lst) (1+ acc))))
+
+III. Separate helper function
+(defun our-length (lst)
+  (our-length-aux lst 0))
+
+(defun our-length-aux (lst acc)
+  (if (null lst)
+      0
+      (1+ (our-length-aux (cdr lst) (1+ acc)))))
+
+- Optimize
+http://www.lispworks.com/documentation/lw50/CLHS/Body/d_optimi.htm#optimize
+
+- How to tell TCO?
+  - Stack overflow
+    (our-length (loop for i upto 10000 collect i)) => 10001
+    (our-length (loop for i upto 100000 collect i)) => SB-KERNEL::CONTROL-STACK-EXHAUSTED
+  - Disassemble
+    CALL -> JMP
+----------------------------------------------------------------------------
+FIND-IF sequence function.
+- Inherently tail recursive
+
+Oops!
+(defun our-find-if (fn lst)
+  (if (funcall fn (car lst))
+      (car lst)
+      (our-find-if fn (cdr lst))))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+(defun our-find-if (fn lst)
+  (cond ((endp lst) nil)
+        ((funcall fn (car lst)) (car lst))
+        (t (our-find-if fn (cdr lst)))) )
+
+(defun find-if (f list)
+  (if (endp list)
+      nil
+      (destructuring-bind (elt . more) list
+        (if (funcall f elt)
+            elt
+            (find-if f more)))) )
+----------------------------------------------------------------------------
+(defun triangle (n)
+  (labels ((tri (c n)
+             (declare (type fixnum n c))
+             (if (zerop n)
+                 c
+                 (tri (the fixnum (+ n c))
+                      (the fixnum (- n 1))))))
+    (tri 0 n)))
+
+1. Weird names
+2. Weird order of params
+3. 0..n
+4. Weird algorithm
+5. Weird limitation
+
+(triangle 10000000000)
+50000000005000000000
+most-positive-fixnum
+4611686018427387903
+
+(log 10000000000 10)
+10.0
+
+(loop for i from 1 upto 20 collect i)
+(loop for i from 20 downto 1 collect i)
+
+(1   2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20) 
+(20 19 18 17 16 15 14 13 12 11 10  9  8  7  6  5  4  3  2  1) 
+ 21 21                                                    21
+
+(defun sum (n)
+  (* n (1+ n) 1/2))
+
+(loop for i upto n summing i)
+
+(time (loop for i upto 1000 summing i))
+; cpu time (total)  0.000003 sec user, 0.000000 sec system
+(time (loop for i upto 10000 summing i))
+; cpu time (total)  0.000010 sec user, 0.000000 sec system
+(time (loop for i upto 100000 summing i))
+; cpu time (total)  0.000085 sec user, 0.000000 sec system
+(time (loop for i upto 1000000 summing i))
+; cpu time (total)  0.000944 sec user, 0.000000 sec system
+(time (loop for i upto 10000000 summing i))
+; cpu time (total)  0.009907 sec user, 0.000000 sec system
+
+(time (sum 1000))
+; cpu time (total)  0.000010 sec user, 0.000000 sec system
+(time (sum 10000))
+; cpu time (total)  0.000034 sec user, 0.000000 sec system
+(time (sum 100000))
+; cpu time (total)  0.000014 sec user, 0.000000 sec system
+(time (sum 1000000))
+; cpu time (total)  0.000020 sec user, 0.000000 sec system
+(time (sum 10000000))
+; cpu time (total)  0.000010 sec user, 0.000000 sec system
+(time (sum 100000000))
+; cpu time (total)  0.000010 sec user, 0.000000 sec system
+(time (sum 1000000000))
+; cpu time (total)  0.000009 sec user, 0.000000 sec system
+============================================================================
+230708 土
+Compilation
+
+Compile all functions
+http://www.lispworks.com/documentation/lw50/CLHS/Body/m_do_sym.htm
+(defun compall ()
+  (do-symbols (s)
+    (when (fboundp s)
+      (unless (compiled-function-p (symbol-function s))
+        (print s)
+        (compile s)))) )
+
+SBCL - nada
+* (compall)
+NIL
+
+CLISP - error
+DECLARE 
+*** - Not a lambda expression nor a function: #<SPECIAL-OPERATOR DECLARE>
+The following restarts are available:
+ABORT          :R1      Abort main loop
+Break 1 CH03A[57]> :a
+CH03A[58]> (fboundp 'declare)
+T
+CH03A[59]> (describe 'declare) ; w3m !!!
+
+(loop for s being each symbol collect s)
+(loop for s being each present-symbol collect s)
+(loop for s being each external-symbol collect s)
+
+----------------------------------------------------------------------------
+Compile enclosing function => Enclosed function is compiled
+(defun make-adder (n)
+  #'(lambda (x) (+ x n)))
+
+(defvar *f* (make-adder 7))
+
+(compiled-function-p *f*)
+
+(compile 'make-adder)
+
+(defvar *g* (make-adder 2))
+
+(compiled-function-p *g*)
+
+----------------------------------------------------------------------------
+????
+(defun 50th (l)
+  (nth 49 l))
+
+(defun foo (l)
+  (+ (50th l) 1))
+
+
+
+
+(defun 50th (l)
+  (nth 49 l))
+
+(proclaim '(inline 50th))
+
+(defun foo (l)
+  (+ (50th l) 1))
+
+(proclaim '(sb-ext:maybe-inline 50th))
+----------------------------------------------------------------------------
+230814 月
+Compilation experiments
+1. Reference to 2nd function changes
+* (defun foo (x) (+ x 5))
+FOO
+* (defun bar (x) (* (foo x) 9))
+BAR
+* (bar 8)
+117
+* (defun foo (x) (+ x 2))
+WARNING: redefining COMMON-LISP-USER::FOO in DEFUN
+FOO
+* (bar 8)
+90
+* (disassemble #'bar)
+; disassembly for BAR
+; Size: 59 bytes. Origin: #x53586BE1                          ; BAR
+; BE1:       498B4510         MOV RAX, [R13+16]               ; thread.binding-stack-pointer
+; BE5:       488945F8         MOV [RBP-8], RAX
+; BE9:       4883EC10         SUB RSP, 16
+; BED:       488B55F0         MOV RDX, [RBP-16]
+; BF1:       B902000000       MOV ECX, 2
+; BF6:       48892C24         MOV [RSP], RBP
+; BFA:       488BEC           MOV RBP, RSP
+; BFD:       B882693F50       MOV EAX, #x503F6982             ; #<FDEFN FOO>
+; C02:       FFD0             CALL RAX
+; C04:       480F42E3         CMOVB RSP, RBX
+; C08:       BF12000000       MOV EDI, 18
+; C0D:       FF1425F800A052   CALL QWORD PTR [#x52A000F8]     ; GENERIC-*
+; C14:       488BE5           MOV RSP, RBP
+; C17:       F8               CLC
+; C18:       5D               POP RBP
+; C19:       C3               RET
+; C1A:       CC10             INT3 16                         ; Invalid argument count trap
+NIL
+
+2. Function defined without 2nd function
+* (defun bar (x) (* (baz x) 2))
+; in: DEFUN BAR
+;     (BAZ X)
+; 
+; caught STYLE-WARNING:
+;   undefined function: COMMON-LISP-USER::BAZ
+; 
+; compilation unit finished
+;   Undefined function:
+;     BAZ
+;   caught 1 STYLE-WARNING condition
+WARNING: redefining COMMON-LISP-USER::BAR in DEFUN
+BAR
+* (disassemble #'bar)
+; disassembly for BAR
+; Size: 59 bytes. Origin: #x534E9F91                          ; BAR
+; 91:       498B4510         MOV RAX, [R13+16]                ; thread.binding-stack-pointer
+; 95:       488945F8         MOV [RBP-8], RAX
+; 99:       4883EC10         SUB RSP, 16
+; 9D:       488B55F0         MOV RDX, [RBP-16]
+; A1:       B902000000       MOV ECX, 2
+; A6:       48892C24         MOV [RSP], RBP
+; AA:       488BEC           MOV RBP, RSP
+; AD:       B8C2693F50       MOV EAX, #x503F69C2              ; #<FDEFN BAZ>
+; B2:       FFD0             CALL RAX
+; B4:       480F42E3         CMOVB RSP, RBX
+; B8:       BF04000000       MOV EDI, 4
+; BD:       FF1425F800A052   CALL QWORD PTR [#x52A000F8]      ; GENERIC-*
+; C4:       488BE5           MOV RSP, RBP
+; C7:       F8               CLC
+; C8:       5D               POP RBP
+; C9:       C3               RET
+; CA:       CC10             INT3 16                          ; Invalid argument count trap
+NIL
+* (defun baz (x) (- x 4))
+BAZ
+* (disassemble #'bar)
+; disassembly for BAR
+; Size: 59 bytes. Origin: #x534E9F91                          ; BAR
+; 91:       498B4510         MOV RAX, [R13+16]                ; thread.binding-stack-pointer
+; 95:       488945F8         MOV [RBP-8], RAX
+; 99:       4883EC10         SUB RSP, 16
+; 9D:       488B55F0         MOV RDX, [RBP-16]
+; A1:       B902000000       MOV ECX, 2
+; A6:       48892C24         MOV [RSP], RBP
+; AA:       488BEC           MOV RBP, RSP
+; AD:       B8C2693F50       MOV EAX, #x503F69C2              ; #<FDEFN BAZ>
+; B2:       FFD0             CALL RAX
+; B4:       480F42E3         CMOVB RSP, RBX
+; B8:       BF04000000       MOV EDI, 4
+; BD:       FF1425F800A052   CALL QWORD PTR [#x52A000F8]      ; GENERIC-*
+; C4:       488BE5           MOV RSP, RBP
+; C7:       F8               CLC
+; C8:       5D               POP RBP
+; C9:       C3               RET
+; CA:       CC10             INT3 16                          ; Invalid argument count trap
+NIL
+
+2.a. Unintern
+* (defun bar (x) (* (baz x) 2))
+WARNING: redefining COMMON-LISP-USER::BAR in DEFUN
+BAR
+* (unintern 'baz)
+T
+* (disassemble #'bar)
+; disassembly for BAR
+; Size: 59 bytes. Origin: #x534EFFA1                          ; BAR
+; A1:       498B4510         MOV RAX, [R13+16]                ; thread.binding-stack-pointer
+; A5:       488945F8         MOV [RBP-8], RAX
+; A9:       4883EC10         SUB RSP, 16
+; AD:       488B55F0         MOV RDX, [RBP-16]
+; B1:       B902000000       MOV ECX, 2
+; B6:       48892C24         MOV [RSP], RBP
+; BA:       488BEC           MOV RBP, RSP
+; BD:       B8C2693F50       MOV EAX, #x503F69C2              ; #<FDEFN #:BAZ>
+; C2:       FFD0             CALL RAX
+; C4:       480F42E3         CMOVB RSP, RBX
+; C8:       BF04000000       MOV EDI, 4
+; CD:       FF1425F800A052   CALL QWORD PTR [#x52A000F8]      ; GENERIC-*
+; D4:       488BE5           MOV RSP, RBP
+; D7:       F8               CLC
+; D8:       5D               POP RBP
+; D9:       C3               RET
+; DA:       CC10             INT3 16                          ; Invalid argument count trap
+NIL
+* (defun baz (x) (- x 4))
+BAZ
+* (disassemble #'bar)
+; disassembly for BAR
+; Size: 59 bytes. Origin: #x534EFFA1                          ; BAR
+; A1:       498B4510         MOV RAX, [R13+16]                ; thread.binding-stack-pointer
+; A5:       488945F8         MOV [RBP-8], RAX
+; A9:       4883EC10         SUB RSP, 16
+; AD:       488B55F0         MOV RDX, [RBP-16]
+; B1:       B902000000       MOV ECX, 2
+; B6:       48892C24         MOV [RSP], RBP
+; BA:       488BEC           MOV RBP, RSP
+; BD:       B8C2693F50       MOV EAX, #x503F69C2              ; #<FDEFN #:BAZ>
+; C2:       FFD0             CALL RAX
+; C4:       480F42E3         CMOVB RSP, RBX
+; C8:       BF04000000       MOV EDI, 4
+; CD:       FF1425F800A052   CALL QWORD PTR [#x52A000F8]      ; GENERIC-*
+; D4:       488BE5           MOV RSP, RBP
+; D7:       F8               CLC
+; D8:       5D               POP RBP
+; D9:       C3               RET
+; DA:       CC10             INT3 16                          ; Invalid argument count trap
+NIL
+
+3. Reference to uninterned
+   (DEFUN uninterned?)
+   - Before
+   - After
+4. FLET/LABELS
+* (defun bar (x)
+(labels ((baz (x) (- x 4)))
+(* (baz x) 2)))
+WARNING: redefining COMMON-LISP-USER::BAR in DEFUN
+BAR
+* (disassemble #'bar)
+; disassembly for BAR
+; Size: 44 bytes. Origin: #x535890B1                          ; BAR
+; B1:       498B4510         MOV RAX, [R13+16]                ; thread.binding-stack-pointer
+; B5:       488945F8         MOV [RBP-8], RAX
+; B9:       488B55F0         MOV RDX, [RBP-16]
+; BD:       BF08000000       MOV EDI, 8
+; C2:       FF1425F000A052   CALL QWORD PTR [#x52A000F0]      ; GENERIC--
+; C9:       BF04000000       MOV EDI, 4
+; CE:       FF1425F800A052   CALL QWORD PTR [#x52A000F8]      ; GENERIC-*
+; D5:       488BE5           MOV RSP, RBP
+; D8:       F8               CLC
+; D9:       5D               POP RBP
+; DA:       C3               RET
+; DB:       CC10             INT3 16                          ; Invalid argument count trap
+NIL
+* (defun bar (x)
+(labels ((baz (x) (foo (- x 4))))
+(* (baz x) 2)))
+WARNING: redefining COMMON-LISP-USER::BAR in DEFUN
+BAR
+* (disassemble #'bar)
+; disassembly for BAR
+; Size: 71 bytes. Origin: #x534EFC91                          ; BAR
+; 91:       498B4510         MOV RAX, [R13+16]                ; thread.binding-stack-pointer
+; 95:       488945F8         MOV [RBP-8], RAX
+; 99:       488B55F0         MOV RDX, [RBP-16]
+; 9D:       BF08000000       MOV EDI, 8
+; A2:       FF1425F000A052   CALL QWORD PTR [#x52A000F0]      ; GENERIC--
+; A9:       4883EC10         SUB RSP, 16
+; AD:       B902000000       MOV ECX, 2
+; B2:       48892C24         MOV [RSP], RBP
+; B6:       488BEC           MOV RBP, RSP
+; B9:       B882693F50       MOV EAX, #x503F6982              ; #<FDEFN FOO>
+; BE:       FFD0             CALL RAX
+; C0:       480F42E3         CMOVB RSP, RBX
+; C4:       BF04000000       MOV EDI, 4
+; C9:       FF1425F800A052   CALL QWORD PTR [#x52A000F8]      ; GENERIC-*
+; D0:       488BE5           MOV RSP, RBP
+; D3:       F8               CLC
+; D4:       5D               POP RBP
+; D5:       C3               RET
+; D6:       CC10             INT3 16                          ; Invalid argument count trap
+NIL
+
+
+
+
+
+Chapter 3
+============================================================================
+230710 月
+https://maryrosecook.com/blog/post/a-practical-introduction-to-functional-programming
+  Functional code is characterised by one thing: the absence of side effects.
+  It doesn’t rely on data outside the current function,
+  and it doesn’t change data that exists outside the current function.
+  Every other “functional” thing can be derived from this property.
+  Use it as a guide rope as you learn.
+
+§3.1
+(defun bad-reverse (l)
+  (do* ((length (length l))
+        (i 0 (1+ i))
+        (j (1- length) (1- j)))
+       ((>= i j))
+    (rotatef (nth i l) (nth j l))))
+
+;(defvar *l* '(a b c))
+(defvar *l* (list 'a 'b 'c 'd 'e 'f 'g))
+
+(bad-reverse *l*)
+
+- Destructive. Reverses list in place. Original destroyed (no consing...)
+- Inefficient. Sequential access
+- No meaningful return value
+
+(defun functional-reverse (l)
+  (labels ((reverse-aux (l result)
+             (if (endp l)
+                 result
+                 (reverse-aux (rest l) (cons (first l) result)))) )
+   (reverse-aux l '())))
+
+- Non-destructive
+- One pass across list
+- Twice the memory (original + copy)
+- Returns reversed list as value
+
+NREVERSE
+(defun nreverse (l)
+  (labels ((nreverse-aux (l)
+             (let ((tail (rest l)))
+               (prog1 (if (null (rest tail))
+                          tail
+                          (nreverse-aux tail))
+                      (setf (rest tail) l)))) )
+    (cond ((null (rest l)) l) ; empty, single-elt list
+          (t (prog1 (nreverse-aux l)
+                    (setf (rest l) '()))) )))
+
+
+? (setf *l* (list 'p 'q 'r 's)) ; Must capture return value
+(P Q R S)
+? (nreverse *l*)
+(S R Q P)
+? *l*
+(P)
+
+
+       L₁      L₂       L₃
+       |       | T₁     | T₂      T₃
+       v       v |      v |       |
+                 v        v       v
+L -> [*|*]--->[*|*]--->[*|*]--->[*|*]--->NIL
+      |        |        |        |
+      v        v        v        v
+      P        Q        R        S
+                                                L'
+                                                |
+                                                v
+   +->[*|*]--->NIL +->[*|*]--+ +->[*|*]--+    [*|*]--+
+   |    |          |    |    | |    |    |      |    |
+   |    v          |    v    | |    v    |      v    |
+   |    P          |    Q    | |    R    |      S    |
+   +-------------------------+ |         |           |
+                   |           |         |           |
+                   +---------------------+           |
+                               |                     |
+                               +---------------------+
+----------------------------------------------------------------------------
+230711 火
+? (defvar *l1* (list 1 2 3))
+*L1*
+? (defvar *l2* (list 4 5))
+*L2*
+? (defvar *l3* (list))
+*L3*
+? (nconc *l1* *l2*)
+(1 2 3 4 5)
+? *l1*
+(1 2 3 4 5)
+? *l2*
+(4 5)
+? (nconc *l3* *l2*)
+(4 5)
+? *l3*
+NIL
+? (setf *l3* (nconc *l3* *l2*))
+(4 5)
+? (eq *l3* *l2*)
+T
+----------------------------------------------------------------------------
+Multiple values
+
+Alternative is modify data in place:
+int count = scanf("%d", &n);
+
+? (truncate 3 2)
+1
+1
+? (truncate 10 3)
+3
+1
+? (truncate 10/3)
+3
+1/3
+? (truncate (/ 10d0 3d0))
+3
+0.3333333333333335D0
+? (multiple-value-bind (quotient remainder) (truncate 10 3)
+  (list quotient remainder))
+(3 1)
+? (multiple-value-list (truncate 10 3))
+(3 1)
+
+(defun powers (x)
+  (values x (sqrt x) (expt x 2)))
+
+? (powers 4)
+4
+2
+16
+
+(defun foo (x)
+  (truncate x))
+
+(defun bar (x)
+  (values (truncate x)))  ; !!
+
+? (foo 2.3)
+2
+0.29999995
+? (bar 2.3)
+2
+----------------------------------------------------------------------------
+Taxed operators
+
+Assignment
+----------
+[set] setq setf psetf psetq
+rotatef shiftf
+
+(defvar *x* 9)
+(set '*x* 10)
+(setq *x* 10)
+(setf *x* 10)
+
+(macroexpand-1 '(setf *x* 10)) => (SETQ *X* 10)
+
+(let ((x 1)
+      (y 2))
+  (setf x y y x)
+  (list x y))
+=> (2 2)
+
+(let ((x 1)
+      (y 2))
+  (psetf x y y x)
+  (list x y))
+=> (2 1)
+
+(let ((x 1)
+      (y 2))
+  (shiftf x y -1)
+  (list x y))
+=> (2 -1)
+
+(let ((x 1)
+      (y 2))
+  (rotatef x y)
+  (list x y))
+=> (2 1)
+
+(macroexpand-1 '(rotatef x y))
+(MULTIPLE-VALUE-BIND (#:G5215) X
+  (MULTIPLE-VALUE-BIND (#:G5216) Y
+    (PROGN (SETQ X #:G5216)
+           (SETQ Y #:G5215)
+           NIL)))
+
+(let* ((x 1)
+       (y 2)
+       (temp x))
+  (setf x y y temp)
+  (list x y))
+=> (2 1)
+
+Numeric
+-------
+incf decf
+
+Cons
+----
+push pop pushnew
+rplaca rplacd
+
+(let ((l (cons 'a 'b)))
+  (rplaca l :a)
+  (rplacd l :b)
+  l)
+=> (:A . :B)
+
+(let ((l (cons 'a 'b)))
+  (setf (car l) :a (cdr l) :b)
+  l)
+
+(let ((l (list 'a 'b)))
+  (setf (first l) :a (rest l) (list :b))
+  l)
+=> (:A :B)
+
+Property lists
+--------------
+remf remprop
+(setf (get ...) ...)
+(setf (getf ...) ...)
+
+http://www.lispworks.com/documentation/lw50/CLHS/Body/f_get.htm
+(defun make-person (first-name last-name)
+  (let ((person (gensym "PERSON")))
+    (setf (get person 'first-name) first-name)
+    (setf (get person 'last-name) last-name)
+    person))
+
+(defvar *john* (make-person "John" "Dow"))
+(defvar *sally* (make-person "Sally" "Jones"))
+
+(get *john* 'first-name)
+(get *sally* 'last-name)
+
+(symbol-plist *john*)
+=> (LAST-NAME "Dow" FIRST-NAME "John")
+(describe *john*)
+#:PERSON5232
+Type: SYMBOL
+Class: #<BUILT-IN-CLASS SYMBOL>
+No home package.
+Print name: "PERSON5232"
+Value: #<Unbound>
+Function: #<Unbound>
+Plist: (LAST-NAME "Dow" FIRST-NAME "John")
+
+(defun marry (man woman married-name)
+  (setf (get man 'wife) woman)
+  (setf (get woman 'husband) man)
+  (setf (get man 'last-name) married-name)
+  (setf (get woman 'last-name) married-name)
+  married-name)
+
+(marry *john* *sally* "Dow-Jones")
+(get *john* 'last-name)
+(get (get *john* 'wife) 'first-name)
+(symbol-plist *john*)
+
+(defmacro age (person &optional (default ''thirty-something)) 
+  `(get ,person 'age ,default))
+
+(age *john*)
+(age *john* 20)
+(setf (age *john*) 25)
+
+(macroexpand-1 '(setf (age *john*) 25))
+(SETF (GET *JOHN* 'AGE 'THIRTY-SOMETHING) 25)
+
+(age *john*)
+(age *john* 20)
+
+Hash tables
+-----------
+remhash
+
+* (defvar *h* (make-hash-table))
+*H*
+* (setf (gethash :foo *h*) t)
+T
+* (setf (gethash :bar *h*) nil)
+NIL
+* (gethash :foo *h*)
+T
+T
+* (gethash :bar *h*)
+NIL
+T
+* (gethash :baz *h*)
+NIL
+NIL
+* (remhash :foo *h*)
+T
+* (gethash :foo *h*)
+NIL
+NIL
+============================================================================
+231115 水
+SETF expanders
+setf expander n. a function used by setf to compute the setf expansion of a place.
+
+place n. 1. a form which is suitable for use as a generalized reference. 2. the conceptual location referred to by such a place[1].
+
+generalized reference n. a reference to a location storing an object as if to a variable. (Such a reference can be either to read or write the location.) See Section 5.1 (Generalized Reference). See also place.
+
+(defvar *l* '())
+
+(setf *l* (list 1 2 3 4))
+(1 2 3 4)
+
+(setf (first *l*) 9)
+9
+
+*l*
+(9 2 3 4)
+
+(setf (rest *l*) 8)
+8
+
+*l*
+(9 . 8)
+
+fdefinition vs. symbol-function
+
+见 date.lisp
+============================================================================
+Mofifying macros (Graham §12.2)
+
+(defmacro incf (n &optional (delta 1))
+  `(setf ,n (+ ,n ,delta)))
+
+(define-modify-macro incf (&optional (delta 1)) +)
+
+(defmacro timesf (x y)
+  `(setf ,x (* ,x ,y)))
+
+(define-modify-macro timesf (y) *)
+
+(defmacro negatef (x)
+  `(setf ,x (- ,x)))
+
+(define-modify-macro negatef () -)
+
+(defmacro reversef (l)
+  `(setf ,l (reverse ,l)))
+
+(define-modify-macro reversef () reverse)
+
+(defvar *x* (list 1 2 3))
+(defvar *y* *x*)
+(defvar *z* *x*)
+
+*x*
+(1 2 3)
+
+
+(reversef *x*)
+(3 2 1)
+*x*
+(3 2 1)
+*y*
+(1 2 3)
+
+
+(nreverse *y*)
+(3 2 1)
+*y*
+(1)
+*z*
+(1)
+
+
+
+
+
+let* in which imperative programs often lie concealed
+============================================================================
+230713 木
+§3.2
+
+(let (x y)
+  (setf x 1 y 2)
+  (list x y))
+
+FP ideal: pure functions
+
+Make code "purer" vs. strictly "pure"?
+============================================================================
+230714 金
+§3.3
+
+For example, though this function calls nconc it preserves referential transparency.
+
+§14.3 (198 页)
+"A language is referentially transparent if (a) every subexpression
+ can be replaced by any other that’s equal to it in value and (b) all
+ occurrences of an expression within a given context yield the same
+ value."
+
+Graham: Note that this standard applies to languages,not to programs. No language with
+assignment is referentially transparent.
+
+https://stackoverflow.com/questions/210835/what-is-referential-transparency/9859966#9859966
+https://www.nobugs.org/blog/archives/2008/11/12/why-do-they-call-it-referentially-transparent/
+https://www.nobugs.org/blog/archives/2008/11/12/why-do-they-call-it-referentially-transparent-ii/
+https://wiki.haskell.org/Referential_transparency
+http://www.cas.mcmaster.ca/~kahl/reftrans.html
+
+(defun qualify (expr)
+  (nconc (copy-list expr) (list 'maybe)))
+
+(defun qualify* (expr)
+  (append expr (list 'maybe)))
+
+(defvar *l* (list 1 2 3 4))
+*L*
+(qualify *l*)
+(1 2 3 4 MAYBE)
+(qualify* *l*)
+(1 2 3 4 MAYBE)
+*l*
+(1 2 3 4)
+
+APPEND vs. NCONC
+[*|*]--->[*|*]--->[*|*]--->[*|*]--->NIL
+  |        |        |        |
+  v        v        v        v
+  A        B        C        D
+
+
+[*|*]--->[*|*]--->NIL
+  |        |
+  v        v
+  E        F
+
+
+NCONC
+[*|*]--->[*|*]--->[*|*]--->[*|*]------->[*|*]--->[*|*]--->NIL
+  |        |        |        |            |        |
+  v        v        v        v            v        v
+  A        B        C        D            E        F
+
+
+APPEND
+[*|*]--->[*|*]--->[*|*]--->[*|*]--->NIL
+  |        |        |        |
+  v        v        v        v
+  A        B        C        D
+  ^        ^        ^        ^
+  |        |        |        |
+[*|*]--->[*|*]--->[*|*]--->[*|*]------->[*|*]--->[*|*]--->NIL
+                                          |        |
+                                          v        v
+                                          E        F
+
+
+230927
+
+(defmacro condp (pred val &rest clauses)
+  (let ((predicate (make-symbol "PREDICATE"))
+        (value (make-symbol "VALUE")))
+    `(let ((,predicate ,pred)
+           (,value ,val))
+       (assert (functionp ,predicate) () "Predicate must be a function: ~A" ,predicate)
+       (cond ,@(loop for clause in clauses
+                     collect `((funcall ,predicate ,(first clause) ,value) ,(second clause)))) )))
+
+
+
+
+
+
+
+
+
+
+(defun transform-clause (clause predicate value)
+  (ecase (length clause)
+    (1)
+    (2 `((funcall ,predicate ,(first clause) ,value) ,(second clause)))
+    (3 (destructuring-bind (target delimiter fn) clause
+         (assert (eq delimiter :>>) () "Malformed delimiter: ~S" delimiter)
+         `((funcall ,predicate ,target ,value) (funcall ,fn (funcall ,predicate ,target ,value)))) )))
+
+(defmacro condp (pred val &rest clauses)
+  (let ((predicate (make-symbol "PREDICATE"))
+        (value (make-symbol "VALUE")))
+    `(let ((,predicate ,pred)
+           (,value ,val))
+       (assert (functionp ,predicate) () "Predicate must be a function: ~A" ,predicate)
+       (cond ,@(loop for clause in clauses
+                     collect (transform-clause clause predicate value)))) ))
+
+
+(defun transform-clause (clause predicate value)
+  (ecase (length clause)
+    (1 `(t ,@clause))
+    (2 `((funcall ,predicate ,(first clause) ,value) ,(second clause)))
+    (3 (destructuring-bind (target delimiter fn) clause
+         (assert (eq delimiter :>>) () "Malformed delimiter: ~S" delimiter)
+         `((funcall ,predicate ,target ,value) (funcall ,fn (funcall ,predicate ,target ,value)))) )))
+
+
+(defun fizz-buzz (n)
+  (condp #'(lambda (p q) (zerop (mod q p))) n
+    (15 "fizzbuzz")
+    (3  "fizz")
+    (5  "buzz")
+    (n)))
+
+(loop for i from 1 to 20 do (format t "~A~%" (fizz-buzz i)))
+
+(defun fizz-buzz* (n)
+  (case (mod n 15)
+    (15 "fizzbuzz")
+    (3  "fizz")
+    (5  "buzz")
+    (otherwise n)))
+
+(defun ordering (x y)
+  (condp #'apply (list x y)
+    (#'= "eq")
+    (#'< "lt")
+    (#'> "gt")))
+
+(condp some [1 2 3 4]
+  #{0 6 7} :>> inc
+  #{4 5 9} :>> dec
+  #{1 2 3} :>> #(+ % 3))

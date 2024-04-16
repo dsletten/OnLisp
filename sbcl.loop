@@ -1,0 +1,149 @@
+(macroexpand-1 ' (loop for i from 0 below n
+                       for elt in l
+                       for tail on l
+                       collect elt into q
+                       finally (return (values q (rest tail)))))
+
+(BLOCK NIL
+  (LET ((I 0) (#:LOOP-LIMIT-944 N))
+    (DECLARE (TYPE (AND NUMBER REAL) #:LOOP-LIMIT-944)
+     (TYPE (AND REAL NUMBER) I))
+    (LET ((ELT NIL) (#:LOOP-LIST-945 L))
+      (DECLARE (TYPE LIST #:LOOP-LIST-945))
+      (LET ((TAIL L))
+        (SB-LOOP::WITH-LOOP-LIST-COLLECTION-HEAD
+         (#:LOOP-LIST-HEAD-946 #:LOOP-LIST-TAIL-947 Q)
+         (SB-LOOP::LOOP-BODY NIL
+                             (NIL NIL
+                              (WHEN (>= I #:LOOP-LIMIT-944)
+                                (GO SB-LOOP::END-LOOP))
+                              NIL
+                              (WHEN (ENDP #:LOOP-LIST-945)
+                                (GO SB-LOOP::END-LOOP))
+                              (SB-LOOP::LOOP-REALLY-DESETQ ELT
+                                                           (CAR
+                                                            #:LOOP-LIST-945))
+                              NIL
+                              (SB-LOOP::LOOP-REALLY-DESETQ #:LOOP-LIST-945
+                                                           (CDR
+                                                            #:LOOP-LIST-945))
+                              NIL NIL (WHEN (ATOM TAIL) (GO SB-LOOP::END-LOOP))
+                              NIL)
+                             ((SB-LOOP::LOOP-COLLECT-RPLACD
+                               (#:LOOP-LIST-HEAD-946 #:LOOP-LIST-TAIL-947 Q)
+                               (LIST ELT)))
+                             (NIL (SB-LOOP::LOOP-REALLY-DESETQ I (1+ I))
+                              (WHEN (>= I #:LOOP-LIMIT-944)
+                                (GO SB-LOOP::END-LOOP))
+                              NIL
+                              (WHEN (ENDP #:LOOP-LIST-945)
+                                (GO SB-LOOP::END-LOOP))
+                              (SB-LOOP::LOOP-REALLY-DESETQ ELT
+                                                           (CAR
+                                                            #:LOOP-LIST-945))
+                              NIL
+                              (SB-LOOP::LOOP-REALLY-DESETQ #:LOOP-LIST-945
+                                                           (CDR
+                                                            #:LOOP-LIST-945))
+                              NIL (SB-LOOP::LOOP-REALLY-DESETQ TAIL (CDR TAIL))
+                              (WHEN (ATOM TAIL) (GO SB-LOOP::END-LOOP)) NIL)
+                             ((RETURN (VALUES Q (REST TAIL))))))))))
+
+(BLOCK NIL
+  (LET ((I 0) (#:LOOP-LIMIT-944 N))
+    (DECLARE (TYPE (AND NUMBER REAL) #:LOOP-LIMIT-944)
+             (TYPE (AND REAL NUMBER) I))
+    (LET ((ELT NIL) (#:LOOP-LIST-945 L))
+      (DECLARE (TYPE LIST #:LOOP-LIST-945))
+      (LET ((TAIL L))
+        (LET* ((LOOP-LIST-HEAD-946 (LIST NIL))
+               (LOOP-LIST-TAIL-947 LOOP-LIST-HEAD-946)
+               (Q NIL))
+          (SB-LOOP::LOOP-BODY NIL
+                              (NIL NIL
+                                   (WHEN (>= I LOOP-LIMIT-944) (GO SB-LOOP::END-LOOP)) NIL
+                                   (WHEN (ENDP LOOP-LIST-945) (GO SB-LOOP::END-LOOP))
+                                   (SB-LOOP::LOOP-REALLY-DESETQ ELT (CAR LOOP-LIST-945))
+                                   NIL
+                                   (SB-LOOP::LOOP-REALLY-DESETQ LOOP-LIST-945
+                                                                (CDR LOOP-LIST-945))
+                                   NIL NIL (WHEN (ATOM TAIL) (GO SB-LOOP::END-LOOP)) NIL)
+                              ((SB-LOOP::LOOP-COLLECT-RPLACD
+                                (LOOP-LIST-HEAD-946 LOOP-LIST-TAIL-947 Q) (LIST ELT)))
+                              (NIL (SB-LOOP::LOOP-REALLY-DESETQ I (1+ I))
+                                   (WHEN (>= I LOOP-LIMIT-944) (GO SB-LOOP::END-LOOP)) NIL
+                                   (WHEN (ENDP LOOP-LIST-945) (GO SB-LOOP::END-LOOP))
+                                   (SB-LOOP::LOOP-REALLY-DESETQ ELT (CAR LOOP-LIST-945))
+                                   NIL
+                                   (SB-LOOP::LOOP-REALLY-DESETQ LOOP-LIST-945
+                                                                (CDR LOOP-LIST-945))
+                                   NIL (SB-LOOP::LOOP-REALLY-DESETQ TAIL (CDR TAIL))
+                                   (WHEN (ATOM TAIL) (GO SB-LOOP::END-LOOP)) NIL)
+                              ((RETURN (VALUES Q (REST TAIL))))))))))
+
+
+(BLOCK NIL
+  (LET ((I 0) (#:LOOP-LIMIT-944 N))
+    (DECLARE (TYPE (AND NUMBER REAL) #:LOOP-LIMIT-944)
+             (TYPE (AND REAL NUMBER) I))
+    (LET ((ELT NIL) (#:LOOP-LIST-945 L))
+      (DECLARE (TYPE LIST #:LOOP-LIST-945))
+      (LET ((TAIL L))
+        (LET* ((LOOP-LIST-HEAD-946 (LIST NIL))
+               (LOOP-LIST-TAIL-947 LOOP-LIST-HEAD-946)
+               (Q NIL))
+          (TAGBODY
+             (WHEN (>= I LOOP-LIMIT-944) (GO SB-LOOP::END-LOOP))
+             (WHEN (ENDP LOOP-LIST-945) (GO SB-LOOP::END-LOOP))
+             (SB-LOOP::LOOP-REALLY-DESETQ ELT (CAR LOOP-LIST-945))
+             (SB-LOOP::LOOP-REALLY-DESETQ LOOP-LIST-945 (CDR LOOP-LIST-945))
+           SB-LOOP::NEXT-LOOP
+             (WHEN (ATOM TAIL) (GO SB-LOOP::END-LOOP))
+             (SB-LOOP::LOOP-COLLECT-RPLACD (LOOP-LIST-HEAD-946 LOOP-LIST-TAIL-947 Q)
+                                           (LIST ELT))
+             (SB-LOOP::LOOP-REALLY-DESETQ I (1+ I))
+             (WHEN (>= I LOOP-LIMIT-944) (GO SB-LOOP::END-LOOP))
+             (WHEN (ENDP LOOP-LIST-945) (GO SB-LOOP::END-LOOP))
+             (SB-LOOP::LOOP-REALLY-DESETQ ELT (CAR LOOP-LIST-945))
+             (SB-LOOP::LOOP-REALLY-DESETQ LOOP-LIST-945 (CDR LOOP-LIST-945))
+             (SB-LOOP::LOOP-REALLY-DESETQ TAIL (CDR TAIL))
+             (GO SB-LOOP::NEXT-LOOP)
+           SB-LOOP::END-LOOP
+             (RETURN (VALUES Q (REST TAIL))))
+
+(block nil
+  (let ((i 0)
+        (#:loop-limit-944 n))
+    (declare (type (and number real) #:loop-limit-944)
+             (type (and real number) i))
+    (let ((elt nil)
+          (#:loop-list-945 l))
+      (declare (type list #:loop-list-945))
+      (let ((tail l))
+        (let* ((#:loop-list-head-946 (list nil))
+               (#:loop-list-tail-947 #:loop-list-head-946)
+               (q nil))
+          (tagbody
+             (when (>= i #:loop-limit-944)
+               (go sb-loop::end-loop))
+             (when (endp #:loop-list-945)
+               (go sb-loop::end-loop))
+             (setq elt (car #:loop-list-945))
+             (setq #:loop-list-945 (cdr #:loop-list-945))
+           sb-loop::next-loop
+             (when (atom tail)
+               (go sb-loop::end-loop))
+             (progn
+               (rplacd #:loop-list-tail-947 (setq #:loop-list-tail-947 (list elt)))
+               (setq q (cdr #:loop-list-head-946)))
+             (setq i (1+ i))
+             (when (>= i #:loop-limit-944)
+               (go sb-loop::end-loop))
+             (when (endp #:loop-list-945)
+               (go sb-loop::end-loop))
+             (setq elt (car #:loop-list-945))
+             (setq #:loop-list-945 (cdr #:loop-list-945))
+             (setq tail (cdr tail))
+             (go sb-loop::next-loop)
+           sb-loop::end-loop
+             (return (values q (rest tail))))
