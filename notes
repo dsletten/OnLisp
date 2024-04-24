@@ -193,7 +193,7 @@ Scope
 ;;;
 ;;;    Special when declared
 ;;;
-(let ((y 7))
+(let ((y 7))     ; This binding is irrelevant
   (declare (special y))
   (defun f (x)
     (declare (special y))
@@ -204,11 +204,16 @@ Scope
   (f 3))
 
 
-(defun f* (x) (declare (special y)) (list x y))
-(let ((y 9)) (declare (special y)) (f* 8))
+;;;
+;;;    More typical case
+;;;
+(defun f* (x)
+  (declare (special y))
+  (list x y))
 
-
-
+(let ((y 9))
+  (declare (special y))
+  (f* 8)) ; Y indirectly "passed" to F*
 
 
 ;;;
@@ -361,9 +366,163 @@ Only one special variable ever exists at a given moment.
       (z 88))
   (declare (special x))
   (dolist (special *special*)
-    (funcall special))
+    (funcall special)))
+----------------------------------------------------------------------------
+240418 木
+https://www.lispworks.com/documentation/lw50/CLHS/Body/03_abaad.htm
+3.1.2.1.1.4 Symbols Naming Both Lexical and Dynamic Variables
 
+The same symbol can name both a lexical variable and a dynamic variable, but never in the same lexical environment.     ??!?!?
 
+CLHS:
+(let ((x 1))            ;Binds a special variable X
+  (declare (special x))
+  (let ((x 2))          ;Binds a lexical variable X
+    (+ x                ;Reads a lexical variable X
+       (locally (declare (special x))
+                x))))  
+Me:
+(defun baz ()
+  (let ((x 2))
+    (list x (symbol-value 'x)))) ; Can't call (BAZ) directly...
+(defun foo ()
+  (let ((x 1))
+    (declare (special x))
+    (baz)))
+
+(defun baz* ()
+  (let ((x 2))
+    (list x (boundp 'x))))
+(defun foo* ()
+  (let ((x 1))
+    (declare (special x))
+    (baz*)))
+
+(baz*) => (2 NIL)
+(foo*) => (2 T)
+----------------------------------------------------------------------------
+240418 木
+Fully encapsulated state
+(defclass encapsulated-person ()
+  ((state :initarg :state :reader state)))
+
+(defmacro make-state (&rest slots)
+;  (let ((getters (mapcar #'(lambda (slot) (make-symbol (format nil "GET-~A" slot))) slots))
+;        (setters (mapcar #'(lambda (slot) (make-symbol (format nil "SET-~A" slot))) slots)))
+  `(let (,@(mapcar #'list slots) (g (make-hash-table))) (loop for slot in ',slots
+                                                              do (setf (gethash slot g)
+                                                                 `#'(lambda () ,slot)))
+                                                                 g))
+
+(make-instance 'encapsulated-person :state (make-state first-name last-name))
+----------------------------------------------------------------------------
+240415 月
+(defpackage :foo
+  (:use :common-lisp)
+  (:export :foo :x)) ; <-- Creates FOO:X
+
+(defun bar (x)
+  (let ((foo:x 0))
+    #'(lambda ()
+        (incf x)
+        (rotatef x foo:x)
+        (list x foo:x))))
+
+(defvar *b1* (bar 9))
+*B1*
+* (defvar *b2* (bar 7))
+*B2*
+* (funcall *b1*)
+(0 10)
+* (funcall *b1*)
+(10 1)
+* (funcall *b1*)
+(1 11)
+* (funcall *b1*)
+(11 2)
+* (funcall *b2*)
+(0 8)
+* (funcall *b2*)
+(8 1)
+* (funcall *b2*)
+(1 9)
+* (funcall *b2*)
+(9 2)
+----------------------------------------------------------------------------
+240417 水
+Evaluation
+
+3.1.2.1 Form Evaluation https://www.lispworks.com/documentation/lw50/CLHS/Body/03_aba.htm
+Forms fall into three categories: symbols, conses, and self-evaluating objects.
+
+3.1.2.1.3 Self-Evaluating Objects
+A form that is neither a symbol nor a cons is defined to be a self-evaluating object. Evaluating such an object yields the same object as a result.
+Not CONS => ATOM
+Not Symbol => non-symbolic atoms
+
+                                    Form
+                                  /      \
+                                 /        \
+                                /          \
+                            Atom            Cons
+                          /      \            |
+                     Symbol     Other         |-Lambda Form
+                    /      \ (Self-evaluating)|
+                   /        \                 |-Function Form
+                Symbol   Variable             |
+                 Macro      |                 |-Special Form
+                            |-Constant        |
+                            |                 |-Macro Form
+                            |-Lexical          
+                            |
+                            |-Dynamic (Special)
+
+Certain specific symbols and conses might also happen to be ``self-evaluating'' but only as a special case of a more general set of rules for the evaluation of symbols and conses; such objects are not considered to be self-evaluating objects.
+(eq #1=(quote #1#) #1#) => T
+(eq :zed :zed) => T
+(eq t t) => T
+(eq t (eq nil nil)) => T
+
+~/lisp/sbcl/sbcl-1.5.9/src/code/symbol.lisp
+(setf (symbol-value t) 99)
+
+debugger invoked on a SIMPLE-ERROR in thread
+#<THREAD "main thread" RUNNING {10018301C3}>:
+  Veritas aeterna. (can't set SYMBOL-VALUE of T)
+
+(setf (symbol-value nil) 99)
+
+debugger invoked on a SIMPLE-ERROR in thread
+#<THREAD "main thread" RUNNING {10018301C3}>:
+  Nihil ex nihil. (can't set SYMBOL-VALUE of NIL)
+----------------------------------------------------------------------------
+240420 土
+What does a symbol mean?
+
+What does (+ 2 x) evaluate to? Obviously, that depends on what X means. What does
+it refer to?
+
+Suppose we have:
+(let ((x "pung"))
+  (+ 2 x))
+
+That looks odd since we assume that + refers to the addition operator (COMMON-LISP:+). But
+the meaning of that symbol can change too:
+(shadow '+)
+(flet ((+ (i s)
+         (char s i)))
+  (let ((x "pung"))
+    (+ 2 x)))
+
+Even more radically, 2 can become a symbol and consequently name something distinct from
+its value:
+(shadow '+)
+(setf (symbol-function '+) #'*)
+(setf *read-base* 2)
+(let ((2 111)
+      (3 101))
+  (let ((x 2))
+    (+ x 3)))
 ============================================================================
 230622 木
 §2.7

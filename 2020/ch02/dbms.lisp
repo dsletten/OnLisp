@@ -69,6 +69,7 @@
 (in-package :dbms-1)
 
 ;;;
+;;;    Cleaner version with named operations.
 ;;;    `insert` of existing key will shadow previous entry.
 ;;;    
 (defun make-dbms (&optional alist)
