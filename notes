@@ -524,6 +524,68 @@ its value:
   (let ((x 2))
     (+ x 3)))
 ============================================================================
+240425 木
+§2.6
+Closures
+
+(defun list+ (l n)
+  (mapcar #'(lambda (elt) (+ elt n)) l)) ; Creates closure on each invocation
+                                         ; N is free variable captured from parameter
+
+(list+ '(1 2 3 4 5) 7) => (8 9 10 11 12)
+
+(let ((counter 0))
+  (defun new-id () (incf counter))        ; Creates 2 closures once
+  (defun reset-id () (setf counter 0)))   ; <-- Controlled access to modify state
+
+* (new-id)
+1
+* (new-id)
+2
+* (reset-id)
+0
+* (new-id)
+1
+
+(defun make-adder (n)
+  #'(lambda (x) (+ x n)))
+
+(defvar *add2* (make-adder 2))
+(defvar *add10* (make-adder 10))
+(funcall *add2* 8) => 10
+(funcall *add2* 9) => 11
+(funcall *add10* 8) => 18
+(funcall *add10* 9) => 19
+
+(setf (symbol-function 'add20) (make-adder 20))
+(add20 8) => 28
+(add20 9) => 29
+
+;;;
+;;;    Redefine LIST+
+;;;
+(defun list+ (l n)
+  (mapcar (make-adder n) l))
+
+(list+ '(1 2 3 4 5) 7) => (8 9 10 11 12)
+
+;;;
+;;;    Closure with semi-exposed state
+;;;
+(defun make-adder* (n)
+  #'(lambda (x &optional tweak)
+       (if tweak
+           (setf n x)
+           (+ x n))))
+
+(defvar *f1* (make-adder* 1))
+(funcall *f1* 2) => 3
+(funcall *f1* 10) => 11
+(funcall *f1* 3 t) => 3  ; Optional 2nd arg
+(funcall *f1* 2) => 5
+(funcall *f1* 10) => 13
+           
+============================================================================
 230622 木
 §2.7
 (defun count-instances (obj lists)
