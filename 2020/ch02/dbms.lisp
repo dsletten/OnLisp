@@ -87,20 +87,20 @@
 ;;;    
 (defun make-dbms (&optional alist)
   (let ((db (copy-tree alist)))
-    (labels ((insert (key val) ; Shadow!
-               (push (cons key val) db)
-               key)
-             (select (key)
-               (cdr (assoc key db)))
-             (update (key val) ; Update latest entry!
-               (let ((entry (assoc key db)))
-                 (cond ((null entry) nil)
-                       (t (setf (cdr entry) val)
-                          key))))
-             (delete (key) ; Delete all entries for key!
-               (setf db (cl:delete key db :key #'car))
-               key)
-             (debug () db))
+    (flet ((insert (key val) ; Shadow!
+             (push (cons key val) db)
+             key)
+           (select (key)
+             (cdr (assoc key db)))
+           (update (key val) ; Update latest entry!
+             (let ((entry (assoc key db)))
+               (cond ((null entry) nil)
+                     (t (setf (cdr entry) val)
+                        key))))
+           (delete (key) ; Delete all entries for key!
+             (setf db (cl:delete key db :key #'car))
+             key)
+           (debug () db))
       (list #'insert #'update #'select #'delete #'debug))))
 
 ;;;
@@ -156,7 +156,7 @@
                         key)))
              (select (key)
                (cdr (find-entry key)))
-             (update (key val) ; Update latest entry!
+             (update (key val)
                (let ((entry (find-entry key)))
                  (cond ((null entry) nil)
                        (t (setf (cdr entry) val)
@@ -229,18 +229,18 @@
 
 (defun make-dbms ()
   (let ((data (make-hash-table :test #'equal)))
-    (labels ((insert (key val)
-               (setf (gethash key data) val)
-               key)
-             (select (key)
-               (gethash key data))
-             (update (key val)
-               (multiple-value-bind (old-val presentp) (gethash key data)
-                 (cond (presentp (setf (gethash key data) val)
-                                 old-val)
-                       (t nil))))
-             (delete (key)
-               (remhash key data)))
+    (flet ((insert (key val)
+             (setf (gethash key data) val)
+             key)
+           (select (key)
+             (values (gethash key data)))
+           (update (key val)
+             (multiple-value-bind (old-val presentp) (gethash key data)
+               (cond (presentp (setf (gethash key data) val)
+                               old-val)
+                     (t nil))))
+           (delete (key)
+             (remhash key data)))
       (make-db :insert #'insert
                :select #'select
                :update #'update
@@ -271,6 +271,10 @@
 
 (in-package :dbms-clos)
 
+;;;
+;;;    Operations on DB are not really closures anymore...
+;;;    DATA is (relatively) private slot passed to functions via enclosing DB instance.
+;;;    
 (defclass db ()
   ((data :initform (make-hash-table :test #'equal))))
 
@@ -292,7 +296,7 @@
 
 (defun select (db key)
   (with-slots (data) db
-    (gethash key data)))
+    (values (gethash key data))))
 
 ;;;
 ;;;    Cannot be used to `insert`.
