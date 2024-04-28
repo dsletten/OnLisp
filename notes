@@ -657,6 +657,78 @@ Notes pg. 293
 (defun g () #'(lambda (x) ...  x ...))
 
 eq?
+----------------------------------------------------------------------------
+240426 金
+On Lisp notes 387-388 页
+Anonymous recursive function
+(defun recurser (f)
+  #'(lambda (&rest args)
+      (apply f f args)))
+
+(let ((fact #'(lambda (f n)
+                (if (zerop n)
+                    1
+                    (* n (funcall f f (1- n)))) )))
+  (funcall (recurser fact) 8))
+
+Direct definition:
+((lambda (f) #'(lambda (n) (funcall f f n)))
+  #'(lambda (f n)
+      (if (zerop n)
+          1
+          (* n (funcall f f (1- n)))) ))
+
+(funcall * 8) => 40320
+
+Y Combinator!!!
+(funcall ((lambda (m)
+            ((lambda (future)
+               (funcall m #'(lambda (arg)
+                              (funcall (funcall future future) arg))))
+             #'(lambda (future)
+                 (funcall m #'(lambda (arg)
+                                (funcall (funcall future future) arg)))) ))
+          #'(lambda (recur) #'(lambda (n) (if (zerop n) 1 (* n (funcall recur (1- n)))) )))
+          8)
+
+193 页
+(defmacro alambda (parms &body body)
+  `(labels ((self ,parms ,@body))
+     #'self))
+
+(funcall (alambda (n) (if (zerop n) 1 (* n (self (1- n))))) 8) => 40320
+
+Clojure named "anonymous" function:
+((fn [x] (+ x 2)) 8) => 10
+vs.
+((lambda (x) (+ x 2)) 8) => 10
+
+((fn factorial [n] (if (zero? n) 1 (* n (factorial (dec n))))) 8) => 40320
+
+XXXXXX No can do XXXXXX
+((alambda (n) (if (zerop n) 1 (* n (self (1- n))))) 8) => 40320
+
+
+
+(defun count-instances (obj lists)
+  (labels ((instances-in (list)
+             (if (consp list)
+                 (+ (if (eql (first list) obj) 1 0) ; Closure over OBJ
+                    (instances-in (rest list)))     ; Recursive
+                 0)))
+    (mapcar #'instances-in lists)))
+
+(defun count-instances-reduce (obj lists)
+  (mapcar #'(lambda (list)
+              (reduce #'+ (mapcar #'(lambda (elt) (if (eql elt obj) 1 0)) list)))
+          lists))
+
+(defun count-instances* (obj lists)
+  (mapcar #'(lambda (list) (count obj list)) lists))
+
+Using core.lisp:
+(defun count-instances** (obj lists)
+  (mapcar (partial #'count obj) lists))
 ============================================================================
 230704 火
 §2.8 Tail Recursion (TCO)
@@ -708,24 +780,7 @@ Oops!
 (defun our-find-if (fn lst)
   (if (funcall fn (car lst))
       (car lst)
-      (our-find-if fn (cdr lst))))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+      (our-find-if fn (cdr lst)))) ; Infinite recursion if not present!!!
 
 (defun our-find-if (fn lst)
   (cond ((endp lst) nil)
