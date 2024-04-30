@@ -1,5 +1,7 @@
 Chapter 2
 ============================================================================
+☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆
+============================================================================
 230521 日
 §2.3
 13 页 apply vs. funcall
@@ -857,6 +859,7 @@ most-positive-fixnum
 ; cpu time (total)  0.000009 sec user, 0.000000 sec system
 ============================================================================
 230708 土
+§2.9
 Compilation
 
 Compile all functions
@@ -902,23 +905,72 @@ Compile enclosing function => Enclosed function is compiled
 (compiled-function-p *g*)
 
 ----------------------------------------------------------------------------
-????
+240429 月
+Inlining
+(sb-ext:describe-compiler-policy)
+- To inline make sure `space` is low optimization, e.g., 1
+SBCL manual warns:
+The value of space mostly influences the compiler’s decision whether to inline operations, which tend to increase the size of programs. Use the value 0 with caution, since it can cause the compiler to inline operations so indiscriminately that the net effect is to slow the program by causing cache misses or even swapping. 
+
 (defun 50th (l)
   (nth 49 l))
 
 (defun foo (l)
   (+ (50th l) 1))
 
-
-
-
-(defun 50th (l)
-  (nth 49 l))
+* (disassemble #'foo)
+; disassembly for FOO
+; Size: 59 bytes. Origin: #x535A9391                          ; FOO
+; 91:       498B4510         MOV RAX, [R13+16]                ; thread.binding-stack-pointer
+; 95:       488945F8         MOV [RBP-8], RAX
+; 99:       4883EC10         SUB RSP, 16
+; 9D:       488B55F0         MOV RDX, [RBP-16]
+; A1:       B902000000       MOV ECX, 2
+; A6:       48892C24         MOV [RSP], RBP
+; AA:       488BEC           MOV RBP, RSP
+; AD:       B842BF3F50       MOV EAX, #x503FBF42              ; #<FDEFN 50TH>
+; B2:       FFD0             CALL RAX                                   ^^^^
+; B4:       480F42E3         CMOVB RSP, RBX
+; B8:       BF02000000       MOV EDI, 2
+; BD:       FF1425E800A052   CALL QWORD PTR [#x52A000E8]      ; GENERIC-+
+; C4:       488BE5           MOV RSP, RBP
+; C7:       F8               CLC
+; C8:       5D               POP RBP
+; C9:       C3               RET
+; CA:       CC10             INT3 16                          ; Invalid argument count trap
+NIL
 
 (proclaim '(inline 50th))
 
+(defun 50th (l)
+  (nth 49 l))
+
 (defun foo (l)
   (+ (50th l) 1))
+
+* (disassemble #'foo)
+; disassembly for FOO
+; Size: 60 bytes. Origin: #x53593EA4                          ; FOO
+; A4:       498B4510         MOV RAX, [R13+16]                ; thread.binding-stack-pointer
+; A8:       488945F8         MOV [RBP-8], RAX
+; AC:       4883EC10         SUB RSP, 16
+; B0:       BA62000000       MOV EDX, 98
+; B5:       488B7DF0         MOV RDI, [RBP-16]
+; B9:       B904000000       MOV ECX, 4
+; BE:       48892C24         MOV [RSP], RBP
+; C2:       488BEC           MOV RBP, RSP
+; C5:       B8A2E73450       MOV EAX, #x5034E7A2              ; #<FDEFN NTH>
+; CA:       FFD0             CALL RAX                                   ^^^
+; CC:       BF02000000       MOV EDI, 2
+; D1:       FF1425E800A052   CALL QWORD PTR [#x52A000E8]      ; GENERIC-+
+; D8:       488BE5           MOV RSP, RBP
+; DB:       F8               CLC
+; DC:       5D               POP RBP
+; DD:       C3               RET
+; DE:       CC10             INT3 16                          ; Invalid argument count trap
+NIL
+
+
 
 (proclaim '(sb-ext:maybe-inline 50th))
 ----------------------------------------------------------------------------
@@ -1122,12 +1174,48 @@ BAR
 ; D5:       C3               RET
 ; D6:       CC10             INT3 16                          ; Invalid argument count trap
 NIL
+----------------------------------------------------------------------------
+240428 日
+(compile nil '(lambda (x) (+ x 2)))
 
+Lambda expression does not capture lexical environment!
+(let ((n 8)) (compile nil '(lambda (x) (+ x n))))
 
+vs.
 
+(let ((n 8)) (compile nil #'(lambda (x) (+ x n)))) ; Consequences undefined?
 
+vs.
+
+(let ((n 8)) (compile nil `(lambda (x) (+ x ,n)))) ; !!!
+
+Not identical:
+(defun foo (x) (* x 9))
+
+(compile 'foo #'(lambda (x) (* x 9)))
+
+(macroexpand-1 '(defun foo (x) (* x 9)))
+(PROGN
+ (EVAL-WHEN (:COMPILE-TOPLEVEL) (SB-C:%COMPILER-DEFUN 'FOO T NIL NIL))
+ (SB-IMPL::%DEFUN 'FOO
+                  (SB-INT:NAMED-LAMBDA FOO
+                      (X)
+                    (BLOCK FOO (* X 9))))) ; <-------
+                     ^^^^^^^^^
+----------------------------------------------------------------------------
+240429 月
+☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆
+Graham discusses compilers for embedded languages: (26 页)
+If a new language is implemented by transformation,
+and the transformation code is compiled, then it yields compiled output—and
+so becomes in effect a compiler for the new language.
+
+He brings up this idea again in §6.3 and §24.8
+☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆
 
 Chapter 3
+============================================================================
+☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆
 ============================================================================
 230710 月
 https://maryrosecook.com/blog/post/a-practical-introduction-to-functional-programming
