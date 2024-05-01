@@ -91,3 +91,113 @@ vs.
      (. f (applyTo (list* x y z args))))
   ([^clojure.lang.IFn f a b c d & args]
      (. f (applyTo (cons a (cons b (cons c (cons d (spread args)))))))))
+
+
+user> (read)
+(apply apply '(+ (7 9)))
+user> (apply apply '(+ (7 9)))
+9
+user> (7 9)
+Execution error (ClassCastException) at user/eval12878 (form-init4003613199647931391.clj:264).
+class java.lang.Long cannot be cast to class clojure.lang.IFn (java.lang.Long is in module java.base of loader 'bootstrap'; clojure.lang.IFn is in unnamed module of loader 'app')
+user> (read)
+(apply apply '(+ (7 9)))
+user> (def expr *1)
+#'user/expr
+user> (first expr)
+apply
+user> (second expr)
+apply
+user> (nth expr 2)
+'(+ (7 9))
+user> (reverse *1)
+((+ (7 9)) quote)
+user> (apply + '((7 9)))
+Execution error (ClassCastException) at java.lang.Class/cast (Class.java:4067).
+Cannot cast clojure.lang.PersistentList to java.lang.Number
+user> (apply + '(7 9))
+16
+user> (apply apply (list + '(7 9)))
+16
+user> (first (list + '(7 9)))
+#function[clojure.core/+]
+user> (first '(+ (7 9)))
++
+user> (first '(#'+ (7 9)))
+#'+
+user> (first '(@#'+ (7 9)))
+@#'+
+user> (reverse *1)
+(#'+ clojure.core/deref)
+user> (reverse (first *1))
+(+ var)
+user> (apply '+ '(7 9))
+9
+user> ('+ 7 9)
+9
+user> ('x 7 9)
+9
+user> ('x 7)
+nil
+user> ('x 7 9 10)
+Execution error (ArityException) at user/eval12916 (form-init4003613199647931391.clj:306).
+Wrong number of args (3) passed to: clojure.lang.Symbol
+user> (get (ns-map *ns*) (symbol (name 'x)))
+nil
+user> (nil 7 9)
+Syntax error (IllegalArgumentException) compiling at (concise:localhost:51399(clj)*:311:7).
+Can't call nil, form: (nil 7 9)
+user> 
+
+('+ 7 9)
+9
+concise.core> (:+ 7 9)
+9
+concise.core> (get {:a 2} 7 9)
+9
+concise.core> (:+ {:+ 4} 9)
+4
+concise.core> ('+ {'+ 4} 9)
+4
+concise.core> (let [{:strs [x y]} {"x" 1 "y" 2}] [x y])
+[1 2]
+concise.core> (let [{:syms [x y]} {'x 1 'y 2}] [x y])
+[1 2]
+concise.core> ("+" {"+" 4} 9)
+Execution error (ClassCastException) at concise.core/eval9505 (form-init14467305224181550478.clj:75).
+class java.lang.String cannot be cast to class clojure.lang.IFn (java.lang.String is in module java.base of loader 'bootstrap'; clojure.lang.IFn is in unnamed module of loader 'app')
+concise.core> (class 's)
+clojure.lang.Symbol
+concise.core> (ancestors *1)
+#{clojure.lang.IMeta clojure.lang.AFn clojure.lang.IObj
+  java.lang.Object clojure.lang.IHashEq clojure.lang.Named
+  java.lang.Comparable clojure.lang.IFn java.io.Serializable
+  java.lang.Runnable java.util.concurrent.Callable}
+  concise.core>
+
+
+https://8thlight.com/insights/the-relationship-between-clojure-functions-symbols-vars-and-namespaces
+
+  +
++ (fn ([& {:keys [yards feet inches], :or {yards 0, feet 0, inches 0}}]
++      (yfi/make-yfi yards feet inches)))
++
++(fn*
++  ([& p__9479]
++    (let [{:keys [yards feet inches], :or {yards 0, feet 0, inches 0}} p__9479]
++      (yfi/make-yfi yards feet inches))))
++
++(let*
++  [map__9480
++   p__9479
++   map__9480
++   (if (seq? map__9480)
++     (clojure.lang.PersistentHashMap/create (seq map__9480))
++     map__9480)
++   yards
++   (get map__9480 :yards 0)
++   feet
++   (get map__9480 :feet 0)
++   inches
++   (get map__9480 :inches 0)]
++  (yfi/make-yfi yards feet inches))
