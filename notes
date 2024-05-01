@@ -1213,6 +1213,17 @@ so becomes in effect a compiler for the new language.
 He brings up this idea again in §6.3 and §24.8
 ☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆
 
+☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆
+§2.10
+It cannot be overemphasized how important it is that Lisp programs can
+write Lisp programs, especially since this fact is so often overlooked. Even
+experienced Lisp users rarely realize the advantages they derive from this feature
+of the language. This is why Lisp macros are so powerful, for example. Most
+of the techniques described in this book depend on the ability to write programs
+which manipulate Lisp expressions.
+☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆
+
+
 Chapter 3
 ============================================================================
 ☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆

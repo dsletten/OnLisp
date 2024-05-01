@@ -1,0 +1,93 @@
+Chapter 2
+============================================================================
+☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆
+============================================================================
+240430 火
+§2.3
+13 页 apply vs. funcall
+
+Graham shows these as having "the same effect":
+(+ 1 2)
+(apply + '(1 2))
+(apply @#'+ '(1 2))
+(apply (fn [x y] (+ x y)) '(1 2))
+
+vs.
+(apply + '(1 2 3))
+(apply (fn [x y] (+ x y)) '(1 2 3))
+
+Variations:
+(apply + 1 '(2 3))
+(apply + 1 2'(3))
+(apply + 1 2 3 '())
+
+(let [add +]
+  (apply add '(1 2 3)))
+----------------------------------------------------------------------------
+另见 funcall
+(No need for FUNCALL in Scheme/Clojure)
+(defun foo (x)
+  (+ x 9))
+
+(defun bar (f x)
+  (funcall f x))
+
+(bar #'foo 8) => 17
+
+vs.
+
+(defn foo [x]
+  (+ x 9))
+
+(defn bar [f x]
+  (f x))
+
+(bar foo 8) => 17
+----------------------------------------------------------------------------
+Head scratchers: (Lisp I APPLY notes 279 页)
+(apply apply + 7 9 '() '())
+(apply apply (list + 7 9 '()))
+(apply apply + '((7 9)))
+vs.
+(apply apply '(+ (7 9)))
+
+(defn apply* [f & args]
+  (prn (cons f args))
+  (apply f args))
+
+
+(defn spread
+  {:private true
+   :static true}
+  [arglist]
+  (cond
+   (nil? arglist) nil
+   (nil? (next arglist)) (seq (first arglist))
+   :else (cons (first arglist) (spread (next arglist)))))
+
+(defn list*
+  "Creates a new seq containing the items prepended to the rest, the
+  last of which will be treated as a sequence."
+  {:added "1.0"
+   :static true}
+  ([args] (seq args))
+  ([a args] (cons a args))
+  ([a b args] (cons a (cons b args)))
+  ([a b c args] (cons a (cons b (cons c args))))
+  ([a b c d & more]
+     (cons a (cons b (cons c (cons d (spread more)))))))
+
+(defn apply
+  "Applies fn f to the argument list formed by prepending intervening arguments to args."
+  {:added "1.0"
+   :static true}
+  ([^clojure.lang.IFn f args]
+     (. f (applyTo (seq args))))
+  ([^clojure.lang.IFn f x args]
+     (. f (applyTo (list* x args))))
+  ([^clojure.lang.IFn f x y args]
+     (. f (applyTo (list* x y args))))
+  ([^clojure.lang.IFn f x y z args]
+     (. f (applyTo (list* x y z args))))
+  ([^clojure.lang.IFn f a b c d & args]
+     (. f (applyTo (cons a (cons b (cons c (cons d (spread args)))))))))
