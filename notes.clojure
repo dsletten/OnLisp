@@ -48,156 +48,170 @@ Head scratchers: (Lisp I APPLY notes 279 页)
 (apply apply + 7 9 '() '())
 (apply apply (list + 7 9 '()))
 (apply apply + '((7 9)))
+(apply apply (list + '(7 9)))
+(apply apply (cons + '((7 9))))
+
 vs.
+
 (apply apply '(+ (7 9)))
-
-(defn apply* [f & args]
-  (prn (cons f args))
-  (apply f args))
-
-
-(defn spread
-  {:private true
-   :static true}
-  [arglist]
-  (cond
-   (nil? arglist) nil
-   (nil? (next arglist)) (seq (first arglist))
-   :else (cons (first arglist) (spread (next arglist)))))
-
-(defn list*
-  "Creates a new seq containing the items prepended to the rest, the
-  last of which will be treated as a sequence."
-  {:added "1.0"
-   :static true}
-  ([args] (seq args))
-  ([a args] (cons a args))
-  ([a b args] (cons a (cons b args)))
-  ([a b c args] (cons a (cons b (cons c args))))
-  ([a b c d & more]
-     (cons a (cons b (cons c (cons d (spread more)))))))
-
-(defn apply
-  "Applies fn f to the argument list formed by prepending intervening arguments to args."
-  {:added "1.0"
-   :static true}
-  ([^clojure.lang.IFn f args]
-     (. f (applyTo (seq args))))
-  ([^clojure.lang.IFn f x args]
-     (. f (applyTo (list* x args))))
-  ([^clojure.lang.IFn f x y args]
-     (. f (applyTo (list* x y args))))
-  ([^clojure.lang.IFn f x y z args]
-     (. f (applyTo (list* x y z args))))
-  ([^clojure.lang.IFn f a b c d & args]
-     (. f (applyTo (cons a (cons b (cons c (cons d (spread args)))))))))
-
-
-user> (read)
-(apply apply '(+ (7 9)))
-user> (apply apply '(+ (7 9)))
-9
-user> (7 9)
-Execution error (ClassCastException) at user/eval12878 (form-init4003613199647931391.clj:264).
-class java.lang.Long cannot be cast to class clojure.lang.IFn (java.lang.Long is in module java.base of loader 'bootstrap'; clojure.lang.IFn is in unnamed module of loader 'app')
-user> (read)
-(apply apply '(+ (7 9)))
-user> (def expr *1)
-#'user/expr
-user> (first expr)
-apply
-user> (second expr)
-apply
-user> (nth expr 2)
-'(+ (7 9))
-user> (reverse *1)
-((+ (7 9)) quote)
-user> (apply + '((7 9)))
-Execution error (ClassCastException) at java.lang.Class/cast (Class.java:4067).
-Cannot cast clojure.lang.PersistentList to java.lang.Number
-user> (apply + '(7 9))
-16
-user> (apply apply (list + '(7 9)))
-16
-user> (first (list + '(7 9)))
-#function[clojure.core/+]
-user> (first '(+ (7 9)))
-+
-user> (first '(#'+ (7 9)))
-#'+
-user> (first '(@#'+ (7 9)))
-@#'+
-user> (reverse *1)
-(#'+ clojure.core/deref)
-user> (reverse (first *1))
-(+ var)
-user> (apply '+ '(7 9))
-9
-user> ('+ 7 9)
-9
-user> ('x 7 9)
-9
-user> ('x 7)
-nil
-user> ('x 7 9 10)
-Execution error (ArityException) at user/eval12916 (form-init4003613199647931391.clj:306).
-Wrong number of args (3) passed to: clojure.lang.Symbol
-user> (get (ns-map *ns*) (symbol (name 'x)))
-nil
-user> (nil 7 9)
-Syntax error (IllegalArgumentException) compiling at (concise:localhost:51399(clj)*:311:7).
-Can't call nil, form: (nil 7 9)
-user> 
-
+I.e.,
+(apply apply '+ '((7 9)))
+(apply '+ '(7 9))
 ('+ 7 9)
-9
-concise.core> (:+ 7 9)
-9
-concise.core> (get {:a 2} 7 9)
-9
-concise.core> (:+ {:+ 4} 9)
-4
-concise.core> ('+ {'+ 4} 9)
-4
-concise.core> (let [{:strs [x y]} {"x" 1 "y" 2}] [x y])
-[1 2]
-concise.core> (let [{:syms [x y]} {'x 1 'y 2}] [x y])
-[1 2]
-concise.core> ("+" {"+" 4} 9)
-Execution error (ClassCastException) at concise.core/eval9505 (form-init14467305224181550478.clj:75).
-class java.lang.String cannot be cast to class clojure.lang.IFn (java.lang.String is in module java.base of loader 'bootstrap'; clojure.lang.IFn is in unnamed module of loader 'app')
-concise.core> (class 's)
-clojure.lang.Symbol
-concise.core> (ancestors *1)
+
+(get 7 '+ 9) => 9
+
+Symbol used as function behaves just like keyword:
+({:a 7} :b 9)
+(:b {:a 7} 9)
+({'* 7} '+ 9)
+('+ {'* 7} 9)
+
+(class 's) => clojure.lang.Symbol
+(ancestors *1) => 
 #{clojure.lang.IMeta clojure.lang.AFn clojure.lang.IObj
   java.lang.Object clojure.lang.IHashEq clojure.lang.Named
   java.lang.Comparable clojure.lang.IFn java.io.Serializable
   java.lang.Runnable java.util.concurrent.Callable}
-  concise.core>
+
+(eval '(+ 7 9))
+(eval '(apply + (7 9)))
+(eval '(apply + '(7 9)))
+----------------------------------------------------------------------------
+240501 水
+(defn remove-if [f l]
+  (cond (empty? l) '()
+        (f (first l)) (remove-if f (rest l))
+        :else (cons (first l) (remove-if f (rest l)))))
+
+(remove-if even? '(1 2 3 4 5)) => (1 3 5)
+(remove-if even? [1 2 3 4 5]) => (1 3 5)
+
+(defn remove-if [f l]
+  (if (empty? l)
+    '()
+    (let [[first & rest] l]
+      (if (f first)
+        (remove-if f rest)
+        (cons first (remove-if f rest))))))
+
+(clojure.repl/source remove)
+(defn remove
+  "Returns a lazy sequence of the items in coll for which
+  (pred item) returns logical false. pred must be free of side-effects.
+  Returns a transducer when no collection is provided."
+  {:added "1.0"
+   :static true}
+  ([pred] (filter (complement pred)))
+  ([pred coll]
+     (filter (complement pred) coll)))
+----------------------------------------------------------------------------
+240502 木
+Dynamic bindings
+
+Lexical (Static Vars) by default
+(let [y 7]
+  (defn g [x]
+    (list x y)))
+
+(let [y 5]
+  (g 3))
+=> (3 7)
+
+(def ^:dynamic z 2)
+(defn f [x]
+  (list x z))
+
+(f 3) => (3 2)
+
+(binding [z 99]
+  (f 3))
+=> (3 99)
+
+;;; ???
+(defn h [^:dynamic z]
+  (f z))
+
+(h 2) => (2 2)
 
 
-https://8thlight.com/insights/the-relationship-between-clojure-functions-symbols-vars-and-namespaces
 
-  +
-+ (fn ([& {:keys [yards feet inches], :or {yards 0, feet 0, inches 0}}]
-+      (yfi/make-yfi yards feet inches)))
-+
-+(fn*
-+  ([& p__9479]
-+    (let [{:keys [yards feet inches], :or {yards 0, feet 0, inches 0}} p__9479]
-+      (yfi/make-yfi yards feet inches))))
-+
-+(let*
-+  [map__9480
-+   p__9479
-+   map__9480
-+   (if (seq? map__9480)
-+     (clojure.lang.PersistentHashMap/create (seq map__9480))
-+     map__9480)
-+   yards
-+   (get map__9480 :yards 0)
-+   feet
-+   (get map__9480 :feet 0)
-+   inches
-+   (get map__9480 :inches 0)]
-+  (yfi/make-yfi yards feet inches))
+
+(defn f [x]
+  (letfn [(g [] (- x 2))
+          (h [x] (/ x (g)))]
+    (+ (g) (h (* 4 x)))))
+
+(f 8) => 34/3
+(f 1) => -5
+
+
+
+
+;(def ^:dynamic x 0)
+(defn f* [^:dynamic x]
+  (letfn [(g* [] (- x 2))
+          (h* [^:dynamic x] (/ x (g*)))]
+    (+ (g*) (h* (* 4 x)))))
+
+(f* 8)
+34/3
+(f* 1)
+-5
+----------------------------------------------------------------------------
+240503 金
+????????????????????
+
+Only one special variable ever exists at a given moment.
+(defn foo [x]
+  #(print x))
+
+(def ^:dynamic x)
+(defn bar [^:dynamic x]
+  #(print x))
+
+(def lexical (list (foo 2) (foo 3) (foo 4)))
+(def dynamic (list (bar 2) (bar 3) (bar 4)))
+
+(doseq [lex lexical] (lex))
+
+(binding [x 99]
+  (doseq [dyn dynamic]
+    (dyn)))
+----------------------------------------------------------------------------
+240503 金
+Taxed operators
+
+Transients
+assoc!
+dissoc!
+conj!
+disj!
+
+Atoms
+swap!
+swap-vals! [old new]
+reset!
+reset-vals! [old new]
+
+Metadata
+alter-meta!  (swap)
+reset-meta!
+
+compare-and-set!
+io!
+persistent!
+pop!
+run!
+
+set-agent-send-executor!
+set-agent-send-off-executor!
+
+set-error-handler!
+set-error-mode!
+
+set-validator!
+
+volatile!
+vreset!
+vswap!
