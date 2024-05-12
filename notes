@@ -431,6 +431,14 @@ Fully encapsulated state
         (rotatef x foo:x)
         (list x foo:x))))
 
+No way Jose:
+(defun bar (x)
+  (let ((x 0))
+    #'(lambda ()
+        (incf x)
+        (rotatef x x)
+        (list x x))))
+
 (defvar *b1* (bar 9))
 *B1*
 * (defvar *b2* (bar 7))
@@ -1744,9 +1752,9 @@ APPEND
 240505 日
 Not all side effects equally bad.
 
-Rule of thumb:-----------------------------------------------------------
-It is harmless for a function to modify something that no one else owns.|
--------------------------------------------------------------------------
+Rule of thumb:------------------------------------------------------------
+It is harmless for a function to modify something that no one else owns. |
+--------------------------------------------------------------------------
 
 In QUALIFY, a new copy of the argument is passed to NCONC. This list is freshly CONSed.
 No other code could have a reference to it.
@@ -1762,10 +1770,10 @@ However, the effects of one call will be visible to subsequent calls.
 (total 1) => 2 ; Visible side effect
 (total 1) => 3
 
-Take II:----------------------------------------------------
-A given invocation can safely modify what it uniquely owns.|
-        ^^^^^^^^^^                                         |
-------------------------------------------------------------
+Take II:-----------------------------------------------------
+A given invocation can safely modify what it uniquely owns. |
+        ^^^^^^^^^^                                          |
+-------------------------------------------------------------
 (Ownership per invocation not merely per function.)
 
 The discussion of ownership involves both arguments and returned values.
@@ -1816,6 +1824,7 @@ and alters the first list:
 This small change, however, now violates the convention:
 (defun not-ok (x)
   (nconc (list 'a) x (list 'c)))
+
 NCONC will splice the list X to the final arg and then splice the first arg to this.
 
 ;(not-ok '(1 2 3))
@@ -1834,10 +1843,10 @@ and alters both the first and second lists:
  A              1        2        3               C         
 
 Programs that are truly indistinguishable from purely functional code require one more condition:
--------------------------------------------------------------------------
-- Functions cannot share objects with other code that violates the rules|
--------------------------------------------------------------------------
-
+---------------------------------------------------------------------------
+- Functions cannot share objects with other code that violates the rules. |
+---------------------------------------------------------------------------
+(defvar *anything* 99)
 (defun anything (x)
   (+ x *anything*))
 
@@ -1845,9 +1854,18 @@ This function does not produce any side effects. However, the value that it retu
 simply rely on the args passed to it.
 - If any other code can alter the value of *ANYTHING*, then ANYTHING will subsequently behave differently.
 
+(anything 100) => 199
+
+(defun ☠ ()
+  (incf *anything*))
+
+(☠)
+
+(anything 100) => 200
+----------------------------------------------------------------------------
 Same issue with free variables in general (particularly special variables)?
 
-§2.5
+      §2.5
       The difference between lexical and dynamic scope comes down to how an
       implementation deals with free variables.                            
 
@@ -1882,6 +1900,127 @@ But lexical closures are not automatically immune:
 (total 1) => 1
 (total 1) => 2
 (total 1) => 3
+----------------------------------------------------------------------------
+240510 金
+Purely functional code:
+- When writing (or thinking about) a function, only need to consider
+  - Functions that call the function
+  - Functions called by the function
+
+Apparently functional code (no visible side effects):
+- Destructive operations like global variables can destroy locality
+- Code with functional interface better than wanton side effects
+
+(defun f (x)
+  (let ((val (g x)))
+    ; Safe to modify VAL?
+    ))
+    
+What if G is IDENTITY?
+(g x) => x
+Modifying VAL modifies object owned by caller of F.
+
+Have to look beyond F. But if F presents functional interface only subtree
+below F needs to be considered.
+----------------------------------------------------------------------------
+Functions should not return anything unsafe to modify
+- Value "belongs" to caller after
+- Don't return anything involving certain constant objects: list, array, string
+  - Literals are obvious red flag
+  - Other constant values vulnerable too
+
+(defun exclaim (expression)
+  (append expression '(oh my))) ; <-- l Literal list
+
+(defun exclaim* (expression)
+  (append expression (list 'oh 'my)))
+
+(exclaim '(lions and tigers and bears)) => (LIONS AND TIGERS AND BEARS OH MY)
+(exclaim* '(lions and tigers and bears)) => (LIONS AND TIGERS AND BEARS OH MY)
+
+(nconc (exclaim '(lions and tigers and bears)) '(goodness)) =>
+(LIONS AND TIGERS AND BEARS OH MY GOODNESS)
+(nconc (exclaim* '(lions and tigers and bears)) '(goodness)) => 
+(LIONS AND TIGERS AND BEARS OH MY GOODNESS)
+
+[*|*]--->[*|*]--->NIL  <-- l
+ |        |
+ v        v
+ OH       MY
+
+[*|*]--->[*|*]--->[*|*]--->NIL  <-- l'
+ |        |        |
+ v        v        v
+ OH       MY      GOODNESS
+
+(exclaim '(fixnums and bignums and floats)) =>
+(FIXNUMS AND BIGNUMS AND FLOATS OH MY GOODNESS)
+(exclaim* '(fixnums and bignums and floats)) =>
+(FIXNUMS AND BIGNUMS AND FLOATS OH MY)
+
+CLHS:
+3.7.1 Modification of Literal Objects
+The consequences are undefined if literal objects are destructively modified.
+
+        literal adj. (of an object) referenced directly in a program rather than being computed by the program; 
+        that is, appearing as data in a quote form, or, if the object is a self-evaluating object,              
+        appearing as unquoted data.                                                                             
+        ``In the form (cons "one" '("two")), the expressions "one", ("two"), and "two" are literal objects.''   
+----------------------
+(defun f () #(1 2 3)) ; <-- Literal vector
+(defvar *v1* (f))
+
+(setf (aref *v1* 1) 'foo)
+*v1* => #(1 FOO 3)
+(f) => #(1 FOO 3)
+
+(defun f* () (vector 1 2 3))
+(defun f** () (copy-seq #(1 2 3)))
+----------------------
+(let ((l (list 1 2 3))) ; <-- Not literal, but 
+  (defun g () l))       ; <-- effectively a constant here
+
+(g) => (1 2 3)
+(nconc (g) '(4 5 6)) => (1 2 3 4 5 6)
+(g) => (1 2 3 4 5 6)
+----------------------------------------------------------------------------
+Pure Functional Programming (FP)
+- Don't cause side effects
+- Not vulnerable to side effects
+  - All input comes from parameters
+  - (Closures OK in context of immutable variables)
+
+Functional Interface ≈ FP
+- No visible side effects
+  - Only modify what you own
+    - per invocation
+    - values returned by other functions to you
+- Don't share vulnerable objects (other code has access)
+- Don't return vulnerable objects (you give access to other code)
+- Call with same args => same value
+----------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+240508 水
+(defun foo (obj l) (cons obj (rest l)))
+(foo 'x '(a b c)) => (X B C)
+
+(trace foo)
+
+(foo 'x '(a b c))   <-- QUOTE
+  0: (FOO X (A B C)) <-- ???
+  0: FOO returned (X B C)
+(X B C)
+
+
 
 
 230927
