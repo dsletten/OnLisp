@@ -1241,6 +1241,28 @@ Not identical:
                       (X)
                     (BLOCK FOO (* X 9))))) ; <-------
                      ^^^^^^^^^
+----------------------
+DEFUN -> Named BLOCK
+- Inside LAMBDA
+(defun foo (x) (* x 9))
+
+#'(lambda (x)
+    (block foo
+      (* x 9)))
+
+- Not outside LAMBDA!
+(block foo ; Lexical scope/dynamic extent
+  #'(lambda (x)
+      (* x 9)))
+; BLOCK disestablished here!
+
+CMUCL
+(macroexpand-1 '(defun foo (x) (* x 9)))
+
+(C::%DEFUN 'FOO #'(LAMBDA (X) (BLOCK FOO (* X 9))) NIL '(DEFUN FOO (X) (* X 9)))
+
+(macroexpand-1 '(defun foo (x) (* x 9)))
+(PROGN (CCL::%DEFUN (NFUNCTION FOO (LAMBDA (X) (DECLARE (CCL::GLOBAL-FUNCTION-NAME FOO)) (BLOCK FOO (* X 9)))) 'NIL) 'FOO)
 ----------------------------------------------------------------------------
 240429 月
 ☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆
@@ -1261,7 +1283,6 @@ of the language. This is why Lisp macros are so powerful, for example. Most
 of the techniques described in this book depend on the ability to write programs
 which manipulate Lisp expressions.
 ☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆
-
 
 Chapter 3
 ============================================================================
@@ -1842,6 +1863,19 @@ and alters both the first and second lists:
  v              v        v        v               v         
  A              1        2        3               C         
 
+----------------------
+Condition System 19 页
+(block collect
+  (let ((result '())
+        (i 0))
+    (tagbody
+      :head
+        (unless (< i 5)
+          (return-from collect (nreverse result))) ; Destructive reverse
+        (incf i)
+        (push i result)
+        (go :head))))
+----------------------
 Programs that are truly indistinguishable from purely functional code require one more condition:
 ---------------------------------------------------------------------------
 - Functions cannot share objects with other code that violates the rules. |
@@ -1999,16 +2033,173 @@ Functional Interface ≈ FP
 - Don't return vulnerable objects (you give access to other code)
 - Call with same args => same value
 ----------------------------------------------------------------------------
+Chapter 4 Utility Functions
+============================================================================
+☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆
+============================================================================
+240512 日
+Extend Lisp with new functions
+
+Learning to write utilities: learning the habit rather than techniques
+
+How to decide which "Lisp features" a program is lacking?
+
+                                 Utility
+                                 /    \
+                                /      \
+                               /        \
+                              /       More general-purpose
+                      Smaller than     than a particular program
+                      an application
+
+Example:
+(defvar *towns* (List of nearby towns sorted by increasing distance (from where?)))
+
+(defun bookshops (town)
+  ;; Returns list of all bookshops in the given TOWN
+  )
+
+(let ((town (find-if #'bookshops *towns*))) ; Find first town in list with a bookshop
+  (values town (bookshops town)))           ; Get bookshops for that town
+
+- Inelegant/possibly inefficient. BOOKSHOPS called twice to do same work
+
+Instead:
+(defun find-books (towns)
+  (if (endp towns)
+      nil
+      (let ((shops (bookshops (first towns))))
+        (if shops
+            (values (first towns) shops)
+            (find-books (rest towns)))) ))
+
+Eureka!
+What we want is a combination of FIND-IF/SOME:
+(find-if #'evenp '(1 3 5 6 9 11)) => 6
+(some #'evenp '(1 3 5 6 9 11)) => T
+
+Somewhat contrived:
+(find-if #'(lambda (elt) (if (numberp elt) (sqrt elt) nil)) '(a "pung" 5 t)) => 5
+(some #'(lambda (elt) (if (numberp elt) (sqrt elt) nil)) '(a "pung" 5 t)) => 2.236068
+
+(find-if #'bookshops *towns*) ; Find TOWN where (bookshops town) => non-NIL
+(some #'bookshops *towns*) ; Find non-NIL value of (bookshops town) for some town
+
+Generalize:
+(defun find2 (f l)
+  (if (endp l)
+      nil
+      (let ((val (funcall f (first l))))
+        (if val
+            (values (first l) val)
+            (find2 f (rest l)))) ))
+
+(find2 #'(lambda (elt) (if (numberp elt) (sqrt elt) nil)) '(a "pung" 5 t)) => 5; 2.236068
+
+;;    Sequence function
+(defun find-some-if (f seq)
+  (values-list (some #'(lambda (elt)
+                         (let ((val (funcall f elt)))
+                           (if val
+                               (list elt val) ; SOME only returns primary value.
+                               nil)))
+                     seq)))
+
+(find-some-if #'(lambda (elt) (if (numberp elt) (sqrt elt) nil)) '(a "pung" 5 t)) =>
+5
+2.236068
+(find-some-if #'(lambda (elt) (if (numberp elt) (sqrt elt) nil)) #('a "pung" 5 t)) =>
+5
+2.236068
+
+;;    Another implementation. Handles sequences.
+(defun find-some-if (f seq)
+  (typecase seq
+    (list (loop for elt in seq
+                for val = (funcall f elt)
+                when val
+                return (values elt val)))
+    (vector (loop for elt across seq
+                  for val = (funcall f elt)
+                  when val
+                  return (values elt val)))) )
+
+Look for general function <- skeleton of more specific function
+- Pass in function arg to customize behavior ("Put the flesh back on the skeleton.")
 
 
 
+----------------------------------------------------------------------------
+240514 火
+4 types of closures.
 
+https://en.wikipedia.org/wiki/Funarg_problem
+2 "Upward Funargs"
+- Indefinite extent
+- Bindings must be preserved on heap
+- Binding still accessible once enclosing form has exited.
 
+I. Closure over variable binding
+(let ((index 0))
+  (defun counter ()
+    (incf index)))
 
+Evaluation has exited LET form. COUNTER retains access to binding
+(counter) => 1
+(counter) => 2
+(counter) => 3
 
+II. Closure over function binding
+(flet ((foo (x) (* x 17)))
+  (defun bar (x)
+    (if (evenp x)
+        x
+        (foo x))))
 
+FLET exited. BAR retains local function binding.
+(bar 4) => 4
+(bar 5) => 85
 
+2 "Downward Funargs"
+- Dynamic extent
+- All state still on stack
+- Unavailable once enclosing BLOCK/TAGBODY exits
+- Nothing returned back up callstack.
 
+III. Closure over BLOCK name.
+(defun eject (f)
+  (format t "Punching out!~%")
+  (funcall f)) ; Not within lexical scope of BLOCK but still within its
+               ;   dynamic extent.
+
+(block baz
+  (format t "We are in BAZ.~%")
+  (eject #'(lambda () (return-from baz :done)))
+  (format t "About to leave BAZ.~%")) ; Unreachable
+=> We are in BAZ.
+Punching out!
+:DONE
+
+(eject #'(lambda () (return-from baz :done))) ; Extent of BLOCK has ended (disestablished)
+Compile-time error:
+  return for unknown block: BAZ
+
+IV. Closure over TAGBODY tag
+(defun exit-stage-left (f)
+  (format t "Enough of that...~%")
+  (funcall f)) ; Not with lexical scope of TAGBODY. Within dynamic extent.
+
+(let ((i 0))
+  (tagbody
+    :head
+    (print i)
+    (incf i)
+    (when (> i 3)
+      (exit-stage-left #'(lambda () (go :exit))))
+    (go :head)
+    :exit))
+----------------------------------------------------------------------------
+        
 240508 水
 (defun foo (obj l) (cons obj (rest l)))
 (foo 'x '(a b c)) => (X B C)
