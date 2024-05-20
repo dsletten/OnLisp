@@ -519,7 +519,7 @@ Certain specific symbols and conses might also happen to be ``self-evaluating''
 but only as a special case of a more general set of rules for the evaluation of
 symbols and conses; such objects are not considered to be self-evaluating objects.
 
-(eq #1=(quote #1#) #1#) => T
+(eq #1=(quote #1#) #1#) => T          ; SDRAW!!!
 (eq :zed :zed) => T
 (eq t t) => T
 (eq t (eq nil nil)) => T
@@ -2017,6 +2017,132 @@ The consequences are undefined if literal objects are destructively modified.
 (g) => (1 2 3)
 (nconc (g) '(4 5 6)) => (1 2 3 4 5 6)
 (g) => (1 2 3 4 5 6)
+----------------------
+Hidden modification!
+- First time fine
+- Second time never returns!
+test-core TEST-PARTIAL
+(equal '(B C 2 Y Z)
+        (funcall (compose (partial #'apply #'nconc) #'mapcar)
+                 #'rest
+                 '((a b c) (1 2) (x y z)))) ; MAPCAN
+
+
+(defvar *l* '((a b c) (1 2) (x y z)))
+*l* => ((A B C) (1 2) (X Y Z))
+
+(apply #'nconc (mapcar #'rest *l*)) => (B C 2 Y Z)
+*l* => ((A B C 2 Y Z) (1 2 Y Z) (X Y Z))
+(apply #'nconc (mapcar #'rest *l*))
+  C-c C-c
+debugger invoked on a SB-SYS:INTERACTIVE-INTERRUPT @52A19B80 in thread
+
+Before:
+[*|*]--------------------------->[*|*]------------------>[*|*]--->NIL
+ |                                |                       |
+ v                                v                       v
+[*|*]--->[*|*]--->[*|*]--->NIL   [*|*]--->[*|*]--->NIL   [*|*]--->[*|*]--->[*|*]--->NIL
+ |        |        |              |        |              |        |        |
+ v        v        v              v        v              v        v        v
+ A        B        C              1        2              X        Y        Z
+
+MAPCAR #'REST
+[*|*]------------------>[*|*]--------->[*|*]--->NIL
+ |                       |              |
+ v                       v              v
+[*|*]--->[*|*]--->NIL   [*|*]--->NIL   [*|*]--->[*|*]--->NIL
+ |        |              |              |        |
+ v        v              v              v        v
+ B        C              2              Y        Z
+
+Wrong:
+[*|*]------------------------------------------------------>[*|*]------------------------------------>[*|*]--->NIL
+ |                                                           |                                         |
+ v                                                           v                                         v
+[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->NIL   [*|*]--->[*|*]--->[*|*]--->[*|*]--->NIL   [*|*]--->[*|*]--->[*|*]--->NIL
+ |        |        |        |        |        |              |        |        |        |              |        |        |
+ v        v        v        v        v        v              v        v        v        v              v        v        v
+ A        B        C        2        Y        Z              1        2        Y        Z              X        Y        Z
+
+Actual:
+[*|*]------------------------------------------------------>[*|*]------------------------------------>[*|*]--->NIL
+ |                                                           |                                         |
+ v                                                           v                                         v
+[*|*]--->[*|*]                                              [*|*]                                     [*|*]
+ |        | |                                                | |                                       | |  
+ v        v |                                                v |                                       v | 
+ A        B |                                                1 |                                       X | 
+            |                                                  |                                         |
+            |                                                  |                                         |
+            v                                                  v                                         v
+           [*|*]--------------------------------------------->[*|*]------------------------------------>[*|*]--->[*|*]--->NIL
+            |                                                  |                                         |        |          
+            v                                                  v                                         v        v          
+            C                                                  2                                         Y        Z          
+ 
+(eq (cdddr (first *l*)) (cdr (second *l*))) => T
+(eq (cddr (second *l*)) (cdr (third *l*))) => T
+
+
+
+
+
+MAPCAN has same result
+(setf *l* '((a b c) (1 2) (x y z)))
+(mapcan #'rest *l*) => (B C 2 Y Z)
+*l* => ((A B C 2 Y Z) (1 2 Y Z) (X Y Z))
+(mapcan #'rest *l*)
+  C-c C-c
+
+COPY-LIST of original list doesn't help
+(setf *l* (copy-list '((a b c) (1 2) (x y z))))
+(mapcan #'rest *l*) => (B C 2 Y Z)
+*l* => ((A B C 2 Y Z) (1 2 Y Z) (X Y Z))
+* (mapcan #'rest *l*)
+  C-c C-c
+
+COPY-LIST of arg to MAPCAN doesn't help
+(setf *l* '((a b c) (1 2) (x y z)))
+(mapcan #'rest (copy-list *l*)) => (B C 2 Y Z)
+*l* => ((A B C 2 Y Z) (1 2 Y Z) (X Y Z))
+(mapcan #'rest (copy-list *l*))
+  C-c C-c
+
+Original:
+     [*|*]---------------------------->[*|*]------------------->[*|*]--->NIL                  
+      |                                 |                        |                            
+      v                                 v                        v                            
+ +-->[*|*]--->[*|*]--->[*|*]--->NIL +->[*|*]--->[*|*]--->NIL +->[*|*]--->[*|*]--->[*|*]--->NIL
+ |    |        |        |           |    |        |          |    |        |        |          
+ |    v        v        v           |    v        v          |    v        v        v          
+ |    A        B        C           |    1        2          |    X        Y        Z          
+ |                                  |                        |
+ |                                  |                        |
+ |                                  |                        |
+[*|*]----------------------------->[*|*]------------------->[*|*]--->NIL
+
+(eq (first *l*) (first (copy-list *l*))) => T
+(eq (second *l*) (second (copy-list *l*))) => T
+
+Must use COPY-TREE. Deep copy.
+(setf *l* '((a b c) (1 2) (x y z)))
+(mapcan #'rest (copy-tree *l*)) => (B C 2 Y Z)
+*l* => ((A B C) (1 2) (X Y Z))
+(mapcan #'rest (copy-tree *l*)) => (B C 2 Y Z)
+
+[*|*]--------------------------->[*|*]------------------>[*|*]--->NIL
+ |                                |                       |
+ v                                v                       v
+[*|*]--->[*|*]--->[*|*]--->NIL   [*|*]--->[*|*]--->NIL   [*|*]--->[*|*]--->[*|*]--->NIL
+ |        |        |              |        |              |        |        |
+ v        v        v              v        v              v        v        v
+ A        B        C              1        2              X        Y        Z
+ ^        ^        ^              ^        ^              ^        ^        ^
+ |        |        |              |        |              |        |        |
+[*|*]--->[*|*]--->[*|*]--->NIL   [*|*]--->[*|*]--->NIL   [*|*]--->[*|*]--->[*|*]--->NIL
+ ^                                ^                       ^
+ |                                |                       |
+[*|*]--------------------------->[*|*]------------------>[*|*]--->NIL
 ----------------------------------------------------------------------------
 Pure Functional Programming (FP)
 - Don't cause side effects
@@ -2039,6 +2165,7 @@ Chapter 4 Utility Functions
 ============================================================================
 240512 日
 Extend Lisp with new functions
+(Special operators are fixed. Rest of book covers macros.)
 
 Learning to write utilities: learning the habit rather than techniques
 
@@ -2052,6 +2179,69 @@ How to decide which "Lisp features" a program is lacking?
                       Smaller than     than a particular program
                       an application
 
+
+(defvar *nicknames* '((thomas (tom tommy))
+                      (robert (rob bob bobbie))
+                      (theodore (theo ted))
+                      (catherine (kate cathy))
+                      (david (dave davey))
+                      (edward (ed))
+                      (michael (mike))
+                      (elizabeth (liz lisa lizzie))))
+
+(defun nicknames (name)
+  (let ((entry (assoc name *nicknames*)))
+    (if (null entry)
+        nil
+        (second entry))))
+
+(defun all-nicknames (names)
+  (if (null names)
+      '()
+      (nconc (nicknames (first names)) (all-nicknames (rest names)))) ) ; !!
+
+(all-nicknames '(michael edward david)) => (MIKE ED DAVE DAVEY)
+
+Idiomatic:
+(mapcan #'nicknames '(michael edward david))
+  C-c C-c
+
+Oops!
+(sdraw *nicknames* :display-width 200)
+(sdraw (cddr *nicknames*) :display-width 200)
+
+Could rewrite ALL-NICKNAMES with APPEND rather than NCONC, but what about MAPCAN??
+
+见 54 页 (With warning about NICKNAMES!)
+;;;
+;;;    Non-destructive alternative to MAPCAN.
+;;;    
+(defun mappend (f &rest lists)
+  (apply #'append (apply #'mapcar f lists)))
+
+vs.
+
+(defun mapcan (f &rest lists)
+  (apply #'nconc (apply #'mapcar f lists)))
+
+
+(mapcar #'list (loop for i upto 10 collect i) (loop for i upto 10 collect (format nil "~R" i)))
+((0 "zero") (1 "one") (2 "two") (3 "three") (4 "four") (5 "five") (6 "six")
+ (7 "seven") (8 "eight") (9 "nine") (10 "ten"))
+(mappend #'list (loop for i upto 10 collect i) (loop for i upto 10 collect (format nil "~R" i)))
+(0 "zero" 1 "one" 2 "two" 3 "three" 4 "four" 5 "five" 6 "six" 7 "seven" 8
+ "eight" 9 "nine" 10 "ten")
+* (mapcan #'list (loop for i upto 10 collect i) (loop for i upto 10 collect (format nil "~R" i)))
+(0 "zero" 1 "one" 2 "two" 3 "three" 4 "four" 5 "five" 6 "six" 7 "seven" 8
+ "eight" 9 "nine" 10 "ten")
+
+
+(defun nicknames (name)
+  (let ((entry (assoc name *nicknames*)))
+    (if (null entry)
+        nil
+        (copy-list (second entry)))) ) ; Defensive copy (consistent with Graham's oblique description.)
+---------------------------------------------------------
 Example:
 (defvar *towns* (List of nearby towns sorted by increasing distance (from where?)))
 
@@ -2075,15 +2265,16 @@ Instead:
 
 Eureka!
 What we want is a combination of FIND-IF/SOME:
-(find-if #'evenp '(1 3 5 6 9 11)) => 6
-(some #'evenp '(1 3 5 6 9 11)) => T
-
-Somewhat contrived:
-(find-if #'(lambda (elt) (if (numberp elt) (sqrt elt) nil)) '(a "pung" 5 t)) => 5
-(some #'(lambda (elt) (if (numberp elt) (sqrt elt) nil)) '(a "pung" 5 t)) => 2.236068
-
 (find-if #'bookshops *towns*) ; Find TOWN where (bookshops town) => non-NIL
 (some #'bookshops *towns*) ; Find non-NIL value of (bookshops town) for some town
+
+(defun safe-sqrt (x)
+  (if (and (numberp x) (>= x 0))
+      (sqrt x)
+      nil))
+
+(find-if #'safe-sqrt '(a "foo" -3 8 t)) => 8 ; Element of list
+(some #'safe-sqrt '(a "foo" -3 8 t)) => 2.828427 ; Value of function applied to that element
 
 Generalize:
 (defun find2 (f l)
