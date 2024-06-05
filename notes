@@ -2213,6 +2213,9 @@ How to decide which "Lisp features" a program is lacking?
                       Smaller than     than a particular program
                       an application
 
+Example:
+Reinventing the wheel
+- Special purpose solution created when existing general solution could handle
 
 (defvar *nicknames* '((thomas (tom tommy))
                       (robert (rob bob bobbie))
@@ -2224,17 +2227,25 @@ How to decide which "Lisp features" a program is lacking?
                       (elizabeth (liz lisa lizzie))))
 
 (defun nicknames (name)
+  "Get all of the nicknames for a given NAME."
   (let ((entry (assoc name *nicknames*)))
     (if (null entry)
         nil
         (second entry))))
 
+Naive:
 (defun all-nicknames (names)
+  "Collect all of the nicknames for the specified NAMES."
   (if (null names)
       '()
       (nconc (nicknames (first names)) (all-nicknames (rest names)))) ) ; !!
 
 (all-nicknames '(michael edward david)) => (MIKE ED DAVE DAVEY)
+
+- Buries pattern in specific function that could be generally useful.
+  This is not about collecting lists of "nicknames" into a single list but
+  rather a special case of mapping a function over the elements of a list
+  that itself yields lists and joining those lists together: MAPCAN
 
 Idiomatic:
 (mapcan #'nicknames '(michael edward david))
@@ -2242,7 +2253,29 @@ Idiomatic:
 
 Oops!
 (sdraw *nicknames* :display-width 200)
+[*|*]--------------------------->[*|*]------------------------------------>[*|*]----------------------------->[*|*]------------------------------>[*|*]------------------>[*|*]----->[*|*]--->etc.
+ |                                |                                         |                                  |                                   |                       |          |
+ v                                v                                         v                                  v                                   v                       v          v
+[*|*]--->[*|*]--->NIL            [*|*]--->[*|*]--->NIL                     [*|*]----->[*|*]--->NIL            [*|*]------>[*|*]--->NIL            [*|*]--->[*|*]--->NIL   etc.       etc.
+ |        |                       |        |                                |          |                       |           |                       |        |
+ v        v                       v        v                                v          v                       v           v                       v        v
+THOMAS   [*|*]--->[*|*]--->NIL   ROBERT   [*|*]--->[*|*]--->[*|*]--->NIL   THEODORE   [*|*]--->[*|*]--->NIL   CATHERINE   [*|*]--->[*|*]--->NIL   DAVID    [*|*]--->[*|*]--->[*|*]--->[*|*]--->etc.
+          |        |                       |        |        |                         |        |                          |        |                       |        |        |        |
+          v        v                       v        v        v                         v        v                          v        v                       v        v        v        v
+         TOM      TOMMY                   ROB      BOB      BOBBIE                    THEO     TED                        KATE     CATHY                   DAVE     DAVEY     ED      DAVE
+
 (sdraw (cddr *nicknames*) :display-width 200)
+[*|*]----------------------------->[*|*]------------------------------>[*|*]------------------>[*|*]----->[*|*]----->[*|*]--->NIL
+ |                                  |                                   |                       |          |          |
+ v                                  v                                   v                       v          v          v
+[*|*]----->[*|*]--->NIL            [*|*]------>[*|*]--->NIL            [*|*]--->[*|*]--->NIL   etc.       etc.       etc.
+ |          |                       |           |                       |        |
+ v          v                       v           v                       v        v
+THEODORE   [*|*]--->[*|*]--->NIL   CATHERINE   [*|*]--->[*|*]--->NIL   DAVID    [*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->etc.
+            |        |                          |        |                       |        |        |        |        |        |        |        |        |        |        |        |
+            v        v                          v        v                       v        v        v        v        v        v        v        v        v        v        v        v
+           THEO     TED                        KATE     CATHY                   DAVE     DAVEY     ED      DAVE     DAVEY     ED      DAVE     DAVEY     ED      DAVE     DAVEY     ED
+
 
 Could rewrite ALL-NICKNAMES with APPEND rather than NCONC, but what about MAPCAN??
 
@@ -2259,13 +2292,15 @@ vs.
   (apply #'nconc (apply #'mapcar f lists)))
 
 
+(mapcar #'list '(a b c) '(1 2 3))
+((A 1) (B 2) (C 3))
 (mapcar #'list (loop for i upto 10 collect i) (loop for i upto 10 collect (format nil "~R" i)))
 ((0 "zero") (1 "one") (2 "two") (3 "three") (4 "four") (5 "five") (6 "six")
  (7 "seven") (8 "eight") (9 "nine") (10 "ten"))
-(mappend #'list (loop for i upto 10 collect i) (loop for i upto 10 collect (format nil "~R" i)))
+(mapcan #'list (loop for i upto 10 collect i) (loop for i upto 10 collect (format nil "~R" i)))
 (0 "zero" 1 "one" 2 "two" 3 "three" 4 "four" 5 "five" 6 "six" 7 "seven" 8
  "eight" 9 "nine" 10 "ten")
-* (mapcan #'list (loop for i upto 10 collect i) (loop for i upto 10 collect (format nil "~R" i)))
+(mappend #'list (loop for i upto 10 collect i) (loop for i upto 10 collect (format nil "~R" i)))
 (0 "zero" 1 "one" 2 "two" 3 "three" 4 "four" 5 "five" 6 "six" 7 "seven" 8
  "eight" 9 "nine" 10 "ten")
 
@@ -2276,6 +2311,9 @@ vs.
         nil
         (copy-list (second entry)))) ) ; Defensive copy (consistent with Graham's oblique description.)
 ---------------------------------------------------------
+Above, MAPCAN is an existing and superior alternative to writing ALL-NICKNAMES from scratch.
+But what about the case where the alternative (i.e., MAPCAN) doesn't exist yet?
+
 Example:
 (defvar *towns* (List of nearby towns sorted by increasing distance (from where?)))
 
@@ -2283,7 +2321,7 @@ Example:
   ;; Returns list of all bookshops in the given TOWN
   )
 
-(let ((town (find-if #'bookshops *towns*))) ; Find first town in list with a bookshop
+(let ((town (find-if #'bookshops *towns*))) ; Find nearest (first) town in list with a bookshop
   (values town (bookshops town)))           ; Get bookshops for that town
 
 - Inelegant/possibly inefficient. BOOKSHOPS called twice to do same work
@@ -2296,6 +2334,8 @@ Instead:
         (if shops
             (values (first towns) shops)
             (find-books (rest towns)))) ))
+
+But is there more general pattern here?
 
 Eureka!
 What we want is a combination of FIND-IF/SOME:
@@ -2311,6 +2351,7 @@ What we want is a combination of FIND-IF/SOME:
 (some #'safe-sqrt '(a "foo" -3 8 t)) => 2.828427 ; Value of function applied to that element
 
 Generalize:
+[Only works on lists! SOME/FIND-IF are more general sequence functions.]
 (defun find2 (f l)
   (if (endp l)
       nil
@@ -2340,17 +2381,18 @@ Generalize:
 ;;    Another implementation. Handles sequences.
 (defun find-some-if (f seq)
   (typecase seq
-    (list (loop for elt in seq
+    (list (loop for elt in seq                       ; <-- D'oh!
                 for val = (funcall f elt)
                 when val
                 return (values elt val)))
-    (vector (loop for elt across seq
+    (vector (loop for elt across seq                 ; <--
                   for val = (funcall f elt)
                   when val
                   return (values elt val)))) )
 
 Look for general function <- skeleton of more specific function
-- Pass in function arg to customize behavior ("Put the flesh back on the skeleton.")
+- Higher-order function
+  - Pass in function arg to customize behavior ("Put the flesh back on the skeleton.")
 
 
 
