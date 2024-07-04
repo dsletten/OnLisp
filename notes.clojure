@@ -215,3 +215,41 @@ set-validator!
 volatile!
 vreset!
 vswap!
+
+Chapter 4
+============================================================================
+☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆
+============================================================================
+(def nicknames '{thomas (tom tommy)
+                 robert (rob bob bobbie)
+                 theodore (theo ted)
+                 catherine (kate cathy)
+                 david (dave davey)
+                 edward (ed)
+                 michael (mike)
+                 elizabeth (liz lisa lizzie)})
+
+(defn get-nicknames
+  "Get all of the nicknames for a given NAME."
+  [name]
+  (nicknames name))
+
+Naive:
+(defn all-nicknames
+  "Collect all of the nicknames for the specified NAMES."
+  [names]
+  (if (empty? names)
+      '()
+      (concat (nicknames (first names)) (all-nicknames (rest names)))) )
+
+(all-nicknames '(edward theodore catherine)) => (ed theo ted kate cathy)
+
+(defn all-nicknames
+  "Collect all of the nicknames for the specified NAMES."
+  [names]
+  (mapcat get-nicknames names))
+
+
+
+
+

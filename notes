@@ -539,6 +539,8 @@ Function forms
 
 (* (+ 3 4) (- 9 1))
 
+(* (+ 12 2) (/ 7 (- 8 3)))
+
 Macro forms
 (when (evenp 9) (cond :huh?))
 -> (if (evenp 9) (cond :huh?) nil)
@@ -2393,14 +2395,393 @@ Generalize:
 Look for general function <- skeleton of more specific function
 - Higher-order function
   - Pass in function arg to customize behavior ("Put the flesh back on the skeleton.")
+----------------------------------------------------------------------------
+240614 金
+Sidebar: compare SOME vs. FIND-IF
+(defun some1 (fn l)
+  (cond ((endp l) nil)
+	((funcall fn (first l)))
+	(t (some1 fn (rest l)))) )
+
+(defun find-if1 (fn l)
+  (cond ((endp l) nil)
+	((funcall fn (first l)) (first l))
+	(t (find-if1 fn (rest l)))) )
+
+;;;
+;;;    Abstraction
+;;;    
+(defun traverse (l test xform)
+  (cond ((endp l) nil)
+	((funcall test (first l)) (funcall xform (first l)))
+	(t (traverse (rest l) test xform))))
+
+(defun some2 (fn l)
+  (traverse l fn fn))
+
+(defun find-if2 (fn l)
+  (traverse l fn #'identity))
 
 
+SOME -> FIND-IF:
+(some f seq) -> (some #'(lambda (elt) (and (funcall f elt) elt)) seq)
+----------------------------------------------------------------------------
+§4.2 Invest in abstraction
+Utility as capital expense
+- Write once
+- Benefit multiple times after
+
+Write utilities to _efficiently_ implement features that may be _simple to express_ yet
+inefficient in base lang.
+
+(defun longerp (l1 l2)
+  (> (length l1) (length l2)))
+
+(longerp (make-list 1000000) '(a b c)) !!
+
+Make the efficient approach as convenient/natural as the inefficient.
+----------------------------------------------------------------------------
+§4.3 Operations on Lists 240621 金
+
+"Smallest utilities worth defining"
+- Should be declared inline
+
+(proclaim '(inline last1 singlep append1 conc1 mklist))
+
+(defun last1 (l)
+  (first (last l)))
+
+;; LAST cons
+(last '(a b c)) => (C)
+(last '(a b . c)) => (B . C)
+
+(last1 '(a b c)) => C
+(last1 '(a b . c)) => B
+
+
+Does a list contain only one elt?
+(= (length l) 1)
+(= (length (loop for i from 1 to 1000000 collect i)) 1) ; ???
+
+(defun singlep (l)
+  (and (consp l) (null (rest l)))) ; Watch out for NIL
+
+(first '()) => NIL
+(rest '()) => NIL
+(null (rest '())) => T
+(and (consp '()) (null (rest '()))) => NIL
+
+(singlep '(a b)) => NIL
+(singlep '(a)) => T
+(singlep '()) => NIL
+
+
+
+(defun append1 (l obj)
+  (append l (list obj)))
+
+(append1 '(a b c) 'd) => (A B C D)
+
+
+
+(defun conc1 (l obj)
+  (nconc l (list obj))) ; Destructive
+
+
+
+(defun mklist (obj)
+  (if (listp obj)
+      obj
+      (list obj)))
+
+(mklist 'a) => (A)
+(mklist '(a b)) => (A B)
+
+Facilitates MAPCAN/MAPPEND
+- Map a function that returns a list for each elt of input list
+
+(defvar *nicknames* '((thomas (tom tommy))
+                      (robert (rob bob bobbie))
+                      (theodore (theo ted))
+                      (catherine (kate cathy))
+                      (david dave)    ; ---+
+                      (edward ed)     ;    |---> Single names
+                      (michael mike)  ; ---+
+                      (elizabeth (liz lisa lizzie))))
+
+I. MKLIST in mapping function
+(defun nicknames (name)
+  "Get all of the nicknames for a given NAME."
+  (let ((entry (assoc name *nicknames*)))
+    (if (null entry)
+        nil
+        (second entry))))
+
+(defun mappend (f &rest lists)
+  (apply #'append (apply #'mapcar f lists)))
+
+(mappend #'nicknames '(robert michael elizabeth))
+
+debugger invoked on a TYPE-ERROR @52A1FA31 in thread
+#<THREAD "main thread" RUNNING {1001834103}>:
+  The value
+    MIKE
+  is not of type
+    LIST
+
+(mappend (compose #'mklist #'nicknames) '(robert michael elizabeth))
+=> (ROB BOB BOBBIE MIKE LIZ LISA LIZZIE)
+
+
+II. MKLIST in source function
+(defun nicknames (name)
+  "Get all of the nicknames for a given NAME."
+  (let ((entry (assoc name *nicknames*)))
+    (if (null entry)
+        nil
+        (copy-list (mklist (second entry)))) )) ; Defensive copy (consistent with Graham's oblique description.)
+
+(mappend #'nicknames '(robert michael elizabeth))
+=> (ROB BOB BOBBIE MIKE LIZ LISA LIZZIE)
+-----------------------------------------------------------
+Bigger utilities
+
+Is one sequence longer than another?
+(defun longerp (seq1 seq2)
+  "Is SEQ1 strictly longer than SEQ2?"
+  (labels ((compare (seq1 seq2)
+             (cond ((endp seq1) nil) ; Fail fast
+                   ((endp seq2) t)
+                   (t (compare (rest seq1) (rest seq2)))) ))
+    (if (and (listp seq1) (listp seq2))
+        (compare seq1 seq2)
+        (> (length seq1) (length seq2)))) ) ; Cheap for 2 vectors. Expensive for lists
+
+(> (length '(a)) (length (loop for i from 1 to (expt 10 6) collect i)))
+vs.
+(longerp '(a) (loop for i from 1 to (expt 10 6) collect i))
+
+
+
+Graham's FILTER is weird...
+More efficient version of: (mapcar #'f (remove-if-not #'f seq))
+
+He draws the analogy FILTER:SOME::REMOVE-IF-NOT:FIND-IF
+    The built-in REMOVE-IF-NOT returns all the values that might have been returned  
+    if you called FIND-IF with the same function on successive cdrs of a list. Analo-
+    gously, FILTER returns what SOME would have returned for successive cdrs of the  
+    list.
+
+Uh, sort of...
+(remove-if-not #'evenp (loop for i from 1 to 20 collect i))
+(2 4 6 8 10 12 14 16 18 20)
+
+(find-if #'evenp '(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20))
+2
+(find-if #'evenp '(2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20))
+2
+(find-if #'evenp '(3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20))
+4
+(find-if #'evenp '(4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20))
+4
+(maplist #'(lambda (l) (find-if #'evenp l)) (loop for i from 1 to 20 collect i))
+(2 2 4 4 6 6 8 8 10 10 12 12 14 14 16 16 18 18 20 20)
+
+Likewise:
+(filter #'(lambda (x) (if (numberp x) (1+ x) nil)) '(a 1 2 b 3 c d 4))
+(2 3 4 5)
+
+(some #'(lambda (x) (if (numberp x) (1+ x) nil)) '(a 1 2 b 3 c d 4))
+2
+(some #'(lambda (x) (if (numberp x) (1+ x) nil)) '(1 2 b 3 c d 4))
+2
+(some #'(lambda (x) (if (numberp x) (1+ x) nil)) '(2 b 3 c d 4))
+3
+(some #'(lambda (x) (if (numberp x) (1+ x) nil)) '(b 3 c d 4))
+4
+(some #'(lambda (x) (if (numberp x) (1+ x) nil)) '(3 c d 4))
+4
+(maplist #'(lambda (l) (some #'(lambda (x) (if (numberp x) (1+ x) nil)) l)) '(a 1 2 b 3 c d 4))
+(2 2 3 4 4 5 5 5)
+
+
+(flet ((f (x) (if (numberp x) (1+ x) nil))) (remove-if-not #'f '(a 1 2 b 3 c d 4)))
+=> (1 2 3 4)
+(flet ((f (x) (if (numberp x) (1+ x) nil))) (mapcar #'f (remove-if-not #'f '(a 1 2 b 3 c d 4))))
+=> (2 3 4 5)
+
+(defun filter (fn list)
+  (let ((acc '()))
+    (dolist (elt list (nreverse acc))
+      (let ((val (funcall fn elt)))
+ 	(when val
+          (push val acc)))) ))  ; <-- Accumulate vals
+
+Similarly
+(defun remove-if-not (fn list)
+  (let ((acc '()))
+    (dolist (elt list (nreverse acc))
+      (when (funcall fn elt)
+        (push elt acc)))) )  ; <-- Accumulate elts
+
+His version only works on lists...
+
+REMOVE-IF-NOT is a sequence function:
+(remove-if-not #'lower-case-p "aBCdefGhIJk")
+"adefhk"
+(remove-if-not #'lower-case-p (coerce "aBCdefGhIJk" 'list))
+(#\a #\d #\e #\f #\h #\k)
+
+Alternative:
+(defun filter (f seq)
+  (typecase seq
+    (list (loop for elt in seq
+                for val = (funcall f elt)
+                when val collect val))
+    (vector (loop for elt across seq
+                  for val = (funcall f elt)
+                  when val collect val into result
+                  finally (return (coerce result (if (stringp seq) 'string 'vector)))) )))
+
+(filter #'(lambda (ch) (and (alpha-char-p ch) (lower-case-p ch) (char-upcase ch))) "Is this not pung?"))
+"STHISNOTPUNG"
+(filter #'(lambda (ch) (and (alpha-char-p ch) (lower-case-p ch) (char-upcase ch))) (coerce "Is this not pung?" 'list)))
+(#\S #\T #\H #\I #\S #\N #\O #\T #\P #\U #\N #\G)
+
+
+Partition a sequence (list) into groups of size N (last group may be incomplete):
+(group (loop for i from 1 to 12 collect i) 3)
+((1 2 3) (4 5 6) (7 8 9) (10 11 12))
+(group (loop for i from 1 to 12 collect i) 4)
+((1 2 3 4) (5 6 7 8) (9 10 11 12))
+(group (loop for i from 1 to 12 collect i) 5)
+((1 2 3 4 5) (6 7 8 9 10) (11 12))
+
+[Clojure has a similar function `partition-all`:
+(partition-all 5 (range 20)) => ((0 1 2 3 4) (5 6 7 8 9) (10 11 12 13 14) (15 16 17 18 19))
+(partition-all 6 (range 20)) => ((0 1 2 3 4 5) (6 7 8 9 10 11) (12 13 14 15 16 17) (18 19))]
+
+2 edge cases:
+1. SOURCE is empty
+2. N = 0
+(defun group (source n)
+  (when (zerop n) (error "Invalid length.")) ; edge case 2
+  (labels ((group-aux (source acc)
+             (let ((rest (nthcdr n source)))
+               (if (consp rest)
+                   (group-aux rest (cons (subseq source 0 n) acc))
+                   (nreverse (cons source acc)))) ))
+    (if source
+        (group-aux source '())
+        '()))) ; edge case 1
+
+Old skool idiom:
+1. CONS result (backwards)
+2. NREVERSE result when done
+
+More general solution handling sequences:
+(defun drop (n seq)
+  "Drop the first N elements of sequence SEQ."
+  (typecase seq
+    (list (nthcdr n seq))
+    (vector (subseq seq (min n (length seq)))) ))
+
+(defun take (n seq)
+  "Take the first N elements of sequence SEQ."
+  (typecase seq
+    (list (loop repeat n
+                for elt in seq
+                collect elt))
+    (vector (subseq seq 0 (min n (length seq)))) ))
+
+(defun take-drop (n seq)
+  "Split a sequence at the Nth element. Return the subsequences before and after."
+  (assert (typep n `(integer 0))
+          (n)
+          "N must be a non-negative integer.")
+  (typecase seq
+    (list (do ((q (make-linked-queue))
+               (tail seq (rest tail))
+               (i 0 (1+ i)))
+              ((or (= i n) (endp tail)) (values (elements q) tail))
+            (enqueue q (first tail))))
+    (vector (values (take n seq) (drop n seq)))) ) ; Works for strings too
+
+(defun emptyp (seq)
+  (typecase seq
+    (list (null seq))
+    (vector (zerop (length seq)))) )
+
+(defun group (seq n)
+  (loop for (take drop) =      (multiple-value-list (take-drop n seq))
+                          then (multiple-value-list (take-drop n drop))
+        until (emptyp take)
+        collect take))
+
+Graham's version is quite a bit faster than mine!
+(let ((l (loop for i from 1 to 10000 collect i)))
+  (time (loop repeat 10000 do (group l 10))))
+Evaluation took:
+  0.296 seconds of real time
+  0.296443 seconds of total run time (0.292585 user, 0.003858 system)
+  [ Run times consist of 0.028 seconds GC time, and 0.269 seconds non-GC time. ]
+  100.00% CPU
+  948,581,367 processor cycles
+  1,758,406,496 bytes consed
+
+(let ((l (loop for i from 1 to 10000 collect i)))
+  (time (loop repeat 10000 do (group l 10))))
+Evaluation took:
+  2.072 seconds of real time
+  2.072825 seconds of total run time (2.068832 user, 0.003993 system)
+  [ Run times consist of 0.047 seconds GC time, and 2.026 seconds non-GC time. ]
+  100.05% CPU
+  6,606,210,198 processor cycles
+  2,400,649,232 bytes consed
+  
+Furthermore, his version does not handle vectors/strings at all, but mine is _much_ slower for vectors:  
+(let ((l (coerce (loop for i from 1 to 10000 collect i) 'vector)))
+  (time (loop repeat 10000 do (group l 10))))
+Evaluation took:
+  57.417 seconds of real time
+  57.120416 seconds of total run time (55.012079 user, 2.108337 system)
+  [ Run times consist of 6.791 seconds GC time, and 50.330 seconds non-GC time. ]
+  99.48% CPU
+  183,006,234,734 processor cycles
+  400,644,938,192 bytes consed
+
+
+More competitive with Graham:
+(defun take-drop (n seq)
+  "Split a sequence at the Nth element. Return the subsequences before and after."
+  (assert (typep n `(integer 0))
+          (n)
+          "N must be a non-negative integer.")
+  (typecase seq
+    (list (do ((tail seq (rest tail))
+               (i 0 (1+ i)))
+              ((or (= i n) (endp tail)) (values (subseq seq 0 i) tail))))
+    (vector (values (take n seq) (drop n seq)))) ) ; Works for strings too
+
+(let ((l (loop for i from 1 to 10000 collect i)))
+  (time (loop repeat 10000 do (group l 10))))
+Evaluation took:
+  0.456 seconds of real time
+  0.459321 seconds of total run time (0.455205 user, 0.004116 system)
+  [ Run times consist of 0.037 seconds GC time, and 0.423 seconds non-GC time. ]
+  100.66% CPU
+  1,464,684,868 processor cycles
+  1,759,999,248 bytes consed
+  
+NIL
 
 ----------------------------------------------------------------------------
 240514 火
 4 types of closures.
 
 https://en.wikipedia.org/wiki/Funarg_problem
+("Sideward Funarg" Lecture Notes in Computer Science 441, 290 页)
+
 2 "Upward Funargs"
 - Indefinite extent
 - Bindings must be preserved on heap
