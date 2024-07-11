@@ -572,6 +572,20 @@ debugger invoked on a SIMPLE-ERROR in thread
 debugger invoked on a SIMPLE-ERROR in thread
 #<THREAD "main thread" RUNNING {10018301C3}>:
   Nihil ex nihil. (can't set SYMBOL-VALUE of NIL)
+-------------------------------------------------
+240708 月
+~/lisp/books/Touretzky/2019/unary.lisp
+
+(defconstant tally 'x)
+
+(deftype tally ()            ; <------
+  `(member ,tally))
+
+(deftype unary ()            ; <------
+  `(or null (cons tally unary)))
+
+(defun unary (n)
+  (loop repeat n collect tally))
 ----------------------------------------------------------------------------
 240420 土
 What does a symbol mean?
