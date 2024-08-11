@@ -1439,53 +1439,6 @@ NIL
 ? (eq *l3* *l2*)
 T
 ----------------------------------------------------------------------------
-Multiple values
-
-Graham:
-Other operators, like VALUES and MULTIPLE-VALUE-BIND, have been
-provided specifically to make functional programming easier.
-
-Alternative is to modify data in place:
-int count = scanf("%d", &n);
-
-? (truncate 3 2)
-1
-1
-? (truncate 10 3)
-3
-1
-? (truncate 10/3)
-3
-1/3
-? (truncate (/ 10d0 3d0))
-3
-0.3333333333333335D0
-? (multiple-value-bind (quotient remainder) (truncate 10 3)
-  (list quotient remainder))
-(3 1)
-? (multiple-value-list (truncate 10 3))
-(3 1)
-
-(defun powers (x)
-  (values x (sqrt x) (expt x 2)))
-
-? (powers 4)
-4
-2
-16
-
-(defun foo (x)
-  (truncate x))
-
-(defun bar (x)
-  (values (truncate x)))  ; Suppress multiple values!!
-
-? (foo 2.3)
-2
-0.29999995
-? (bar 2.3)
-2
-----------------------------------------------------------------------------
 Taxed operators
 
 Assignment
@@ -1649,6 +1602,53 @@ T
 * (gethash :foo *h*)
 NIL
 NIL
+----------------------------------------------------------------------------
+Multiple values
+
+Graham:
+Other operators, like VALUES and MULTIPLE-VALUE-BIND, have been
+provided specifically to make functional programming easier.
+
+Alternative is to modify data in place:
+int count = scanf("%d", &n);
+
+? (truncate 3 2)
+1
+1
+? (truncate 10 3)
+3
+1
+? (truncate 10/3)
+3
+1/3
+? (truncate (/ 10d0 3d0))
+3
+0.3333333333333335D0
+? (multiple-value-bind (quotient remainder) (truncate 10 3)
+  (list quotient remainder))
+(3 1)
+? (multiple-value-list (truncate 10 3))
+(3 1)
+
+(defun powers (x)
+  (values x (sqrt x) (expt x 2)))
+
+? (powers 4)
+4
+2
+16
+
+(defun foo (x)
+  (truncate x))
+
+(defun bar (x)
+  (values (truncate x)))  ; Suppress multiple values!!
+
+? (foo 2.3)
+2
+0.29999995
+? (bar 2.3)
+2
 ============================================================================
 231115 水
 SETF expanders
@@ -1737,7 +1737,7 @@ let* in which imperative programs often lie concealed
   (setf x 1 y 2)
   (list x y))
 
-Necessary in C89:
+Necessary in C89: (Uh, sort of...declaration must be at start of block, but these could be initialized...)
 List foo(List x) {
   int y;
   int sqr;
@@ -1849,11 +1849,23 @@ A given invocation can safely modify what it uniquely owns. |
 
 The discussion of ownership involves both arguments and returned values.
 Lisp convention:
-An invocation owns objects it receives as return values (from functions that it has called)
-but not objects passed to it as arguments (by caller of the function).
+  An invocation owns objects it receives as return values (from functions that it has called)
+  but not objects passed to it as arguments (by caller of the function).
+[This assertion does not imply that the caller owns a particular argument either. It may
+ have received an argument from its own caller and simply passed it along to the callee:
+(defun f (l)
+  (g 2 l))
+(defun g (n l) ; <-- G does not own L, but neither does F
+  (if (zerop n)
+      l
+      (append l (g (1- n) l))))
+]      
 
 Functions that modify their arguments -> "Destructive"
 Functions that modify objects returned to them -> ???????
+- Only problematic when returned value is derived from an argument.
+  If called function modifies arg or current function modifies the returned value,
+  this may indirectly destructively modify arg (which it doesn't own).
 
 Informally:
 "QUALIFY creates a copy of its arg EXPR"
@@ -1912,6 +1924,59 @@ and alters both the first and second lists:
  |              |        |        |               |         
  v              v        v        v               v         
  A              1        2        3               C         
+
+(defun f (x)
+  (let ((x* (ok x)))
+    (nconc x* (list 'd))))
+F does not modify its arg X, and neither does OK.
+
+How about?
+(defun g (x)
+  (let ((x* (not-ok x)))
+    (nconc x* (list 'd))))
+
+Or
+(defun ok2 (x)
+  (nconc (list 'a) x))
+(defun h (x)
+  (let ((x* (ok2 x)))
+    (nconc x* (list 'd))))
+
+* (defvar *l* (list 1 2 3))
+*L*
+* (ok *l*)
+(A (1 2 3) C)
+* *l*
+(1 2 3)
+* (ok2 *l*)
+(A 1 2 3)
+* *l*
+(1 2 3)
+* (not-ok *l*)
+(A 1 2 3 C)
+* *l*
+(1 2 3 C)
+
+* (setf *l* (list 1 2 3))
+(1 2 3)
+
+* (f *l*)
+(A (1 2 3) C D)
+* *l*
+(1 2 3)
+
+* (g *l*)
+(A 1 2 3 C D)
+* *l*
+(1 2 3 C D)
+
+* (setf *l* (list 1 2 3))
+(1 2 3)
+
+* (h *l*)
+(A 1 2 3 D)
+* *l*
+(1 2 3 D)
 
 ----------------------
 Condition System 19 页
