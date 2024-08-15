@@ -2057,7 +2057,7 @@ Purely functional code:
   - Functions called by the function
 
 Apparently functional code (no visible side effects):
-- Destructive operations like global variables can destroy locality
+- Destructive operations, like global variables, can destroy locality
 - Code with functional interface better than wanton side effects
 
 (defun f (x)
@@ -2402,7 +2402,7 @@ Example:
   ;; Returns list of all bookshops in the given TOWN
   )
 
-(let ((town (find-if #'bookshops *towns*))) ; Find nearest (first) town in list with a bookshop
+(let ((town (find-if #'bookshops *towns*))) ; Find nearest (first) town in list with a bookshop, i.e., success means non-nil list of shops
   (values town (bookshops town)))           ; Get bookshops for that town
 
 - Inelegant/possibly inefficient. BOOKSHOPS called twice to do same work
@@ -2640,6 +2640,27 @@ Is one sequence longer than another?
 vs.
 (longerp '(a) (loop for i from 1 to (expt 10 6) collect i))
 
+(defun longerp (seq1 seq2)
+  "Is SEQ1 strictly longer than SEQ2?"
+  (labels ((compare-ll (seq1 seq2)
+             (cond ((endp seq1) nil)
+                   ((endp seq2) t)
+                   (t (compare-ll (rest seq1) (rest seq2)))) )
+           (compare-ln (seq n)
+             (cond ((endp seq) nil)
+                   ((zerop n) t)
+                   (t (compare-ln (rest seq) (1- n)))) )
+           (compare-nl (n seq)
+             (cond ((zerop n) nil)
+                   ((endp seq) t)
+                   (t (compare-nl (1- n) (rest seq)))) ))
+    (cond ((and (listp seq1) (listp seq2)) (compare-ll seq1 seq2))
+          ((listp seq1) (compare-ln seq1 (length seq2)))
+          ((listp seq2) (compare-nl (length seq1) seq2))
+          (t (> (length seq1) (length seq2)))) ))
+
+(longerp (loop for i upto 100000 collect i) "yep")
+(longerp "nope" (loop for i upto 100000 collect i))
 
 
 Graham's FILTER is weird...
