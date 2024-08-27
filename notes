@@ -2662,7 +2662,29 @@ vs.
 (longerp (loop for i upto 100000 collect i) "yep")
 (longerp "nope" (loop for i upto 100000 collect i))
 
+Generic function vs. explicit type checking:
+(defgeneric longerp (seq1 seq2)
+  (:documentation "Is SEQ1 strictly longer than SEQ2?"))
+(defmethod longerp ((seq1 list) (seq2 list))
+  (cond ((endp seq1) nil)
+        ((endp seq2) t)
+        (t (longerp (rest seq1) (rest seq2)))) )
+(defmethod longerp ((seq1 list) (seq2 sequence))
+  (labels ((compare (seq n)
+             (cond ((endp seq) nil)
+                   ((zerop n) t)
+                   (t (compare (rest seq) (1- n)))) ))
+    (compare seq1 (length seq2))))
+(defmethod longerp ((seq1 sequence) (seq2 list))
+  (labels ((compare (n seq)
+             (cond ((zerop n) nil)
+                   ((endp seq) t)
+                   (t (compare (1- n) (rest seq)))) ))
+    (compare (length seq1) seq2)))
+(defmethod longerp ((seq1 sequence) (seq2 sequence))
+  (> (length seq1) (length seq2)))
 
+-------------------------------------------
 Graham's FILTER is weird...
 More efficient version of: (mapcar #'f (remove-if-not #'f seq))
 
@@ -2748,7 +2770,22 @@ Alternative:
 (filter #'(lambda (ch) (and (alpha-char-p ch) (lower-case-p ch) (char-upcase ch))) (coerce "Is this not pung?" 'list)))
 (#\S #\T #\H #\I #\S #\N #\O #\T #\P #\U #\N #\G)
 
-
+CLOS:
+(defgeneric filter (f seq)
+  (:documentation "Retain non-nil values obtained by applying F to elts of SEQ."))
+(defmethod filter (f (seq list))
+  (loop for elt in seq                    ; D'oh!
+        for val = (funcall f elt)
+        when val collect val))
+(defmethod filter (f (seq sequence))
+  (loop for elt across seq                ; D'oh!
+        for val = (funcall f elt)
+        when val collect val))
+(defmethod filter (f (seq vector))
+  (coerce (call-next-method) 'vector))
+(defmethod filter (f (seq string))
+  (coerce (call-next-method) 'string))
+-------------------------------------------
 Partition a sequence (list) into groups of size N (last group may be incomplete):
 (group (loop for i from 1 to 12 collect i) 3)
 ((1 2 3) (4 5 6) (7 8 9) (10 11 12))
@@ -2874,6 +2911,114 @@ Evaluation took:
   1,759,999,248 bytes consed
   
 NIL
+----------------------------------------------------------------------------
+PRUNE elements (atoms) from a tree vs. REMOVE-IF for sequences
+(prune #'evenp '(1 2 (3 (4 5) 6) 7 8 (9))) => (1 (3 (5)) 7 (9))
+(remove-if #'evenp '(1 2 3 4 5 6 7 8 9)) => (1 3 5 7 9)
+
+Graham gets the names wrong:
+- PRUNE        -> REMOVE
+- PRUNE-IF     -> REMOVE-IF
+- PRUNE-IF-NOT -> REMOVE-IF-NOT
+
+His PRUNE (Should be PRUNE-IF):
+(defun prune (test tree)
+  (labels ((rec (tree acc)
+             (cond ((null tree) (nreverse acc))
+                   ((consp (car tree))
+                    (rec (cdr tree) 
+                         (cons (rec (car tree) nil) acc))) ; Not tail-recursive!
+                   (t (rec (cdr tree)
+                           (if (funcall test (car tree)) ; CAR is not a CONS here.
+                               acc
+                               (cons (car tree) acc)))))))
+    (rec tree nil)))
+
+My redo:
+- ITEM to be pruned is passed in (not TEST. See PRUNE-IF below.)
+- Why does Graham use accumulator? Not tail-recursive!
+- PRUNE:REMOVE::COPY-TREE:COPY-LIST
+(defun prune (item tree)
+  (cond ;((null tree) '())
+        ((atom tree) tree)
+        ((atom (first tree)) (if (eql (first tree) item)
+                                 (prune item (rest tree))
+                                 (cons (first tree) (prune item (rest tree)))) )
+        (t (cons (prune item (first tree))
+                 (prune item (rest tree)))) ))
+
+(defun copy-tree (tree)
+  (cond ((atom tree) tree)
+        (t (cons (copy-tree (first tree))
+                 (copy-tree (rest tree)))) ))
+
+(defun prune (item tree)
+  (cond ((atom tree) tree)
+        ((eql (first tree) item) (prune item (rest tree))) ; Fails with different test
+        (t (cons (prune item (first tree))
+                 (prune item (rest tree)))) ))
+
+(defun copy-list (list)
+  (cond ((atom list) list) ; Handles dotted list
+        (t (cons (first list) (copy-list (rest list)))) ))
+
+(defun remove (item list)
+  (cond ((atom list) list)
+        ((eql item (first list)) (remove item (rest list))) ; Fails with different test
+        (t (cons (first list) (remove item (rest list)))) ))
+
+More complex 2nd clause for arbitrary test:
+(defun prune (item tree &key (test #'eql) (key #'identity))
+  (cond ((atom tree) tree)
+        ((and (atom (first tree)) (funcall test item (funcall key (first tree))))
+         (prune item (rest tree) :test test :key key))
+        (t (cons (prune item (first tree) :test test :key key)
+                 (prune item (rest tree) :test test :key key))) ))
+
+Graham style:
+(defun prune (item tree &key (test #'eql) (key #'identity))
+  "Remove all instances of the atom ITEM from TREE."
+  (labels ((prune-aux (tree result)
+	     (cond ((null tree) (nreverse result))
+                   (t (destructuring-bind (car . cdr) tree
+                        (cond ((and (atom car) (funcall test item (funcall key car))) (prune-aux cdr result))
+                              ((atom car) (prune-aux cdr (cons car result)))
+                              (t (prune-aux cdr (cons (prune-aux car '()) result)))) )))) )
+    (prune-aux tree '())))
+
+PRUNE-IF involves a predicate arg as does REMOVE-IF:
+(defun prune-if (pred tree)
+  "Remove all leaves of TREE for which PRED is true."
+  (labels ((prune-aux (tree result)
+	     (cond ((null tree) (nreverse result))
+                   (t (destructuring-bind (car . cdr) tree
+                        (cond ((and (atom car) (funcall pred car)) (prune-aux cdr result))
+                              ((atom car) (prune-aux cdr (cons car result)))
+                              (t (prune-aux cdr (cons (prune-aux car '()) result)))) )))) )
+    (prune-aux tree '())))
+
+Simply invert the predicate:
+(defun prune-if-not (pred tree)
+  "Remove all leaves of TREE for which PRED is not true."
+  (prune-if (complement pred) tree))
+
+
+(prune :a '(:b :a (:c (:a :d) :e) :g :a (:h :a)))
+(:B (:C (:D) :E) :G (:H))
+(prune-if #'(lambda (elt) (< elt 4)) '(1 2 (3 (4 5) 6) 7 8 (9)))
+(((4 5) 6) 7 8 (9))
+(prune-if (partial* #'< 4) '(1 2 (3 (4 5) 6) 7 8 (9)))
+(((4 5) 6) 7 8 (9))
+
+(< 4 ?)
+     ^--- PARTIAL
+(< ? 4)
+   ^----- PARTIAL*
+
+(prune-if-not #'evenp '(1 2 (3 (4 5) 6) 7 8 (9)))
+(2 ((4) 6) 8 NIL)
+(prune-if #'oddp '(1 2 (3 (4 5) 6) 7 8 (9)))
+(2 ((4) 6) 8 NIL)
 
 ----------------------------------------------------------------------------
 240514 火
