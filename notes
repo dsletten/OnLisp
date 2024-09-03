@@ -3019,7 +3019,37 @@ Simply invert the predicate:
 (2 ((4) 6) 8 NIL)
 (prune-if #'oddp '(1 2 (3 (4 5) 6) 7 8 (9)))
 (2 ((4) 6) 8 NIL)
+----------------------------------------------------------------------------
+240902 月
+:TEST vs. :KEY
+Wrong way
+(defgeneric before (x y seq &key test)
+  (:documentation  "Does X occur before Y in SEQ?"))
+(defmethod before (x y (seq list) &key (test #'eql))
+  (loop for cons on seq
+        for elt = (first cons)
+        when (funcall test y elt) return nil
+        when (funcall test x elt) return cons))
 
+(equal '((:A 9) (:E 5) (:B -6))
+       (before :a :b '((:d 7) (:c 12) (:a 9) (:e 5) (:b -6))
+               :test #'(lambda (x elt) (eq x (first elt)))) )
+
+x = y???
+
+Right way
+(defgeneric before (x y seq &key test key)
+  (:documentation  "Does X occur before Y in SEQ?"))
+(defmethod before (x y (seq list) &key (test #'eql) (key #'identity))
+  (if (funcall test x y)
+      nil
+      (loop for cons on seq
+            for elt = (first cons)
+            when (funcall test y (funcall key elt)) return nil
+            when (funcall test x (funcall key elt)) return cons)))
+
+(equal '((:B -6))
+       (after :b :a '((:d 7) (:c 12) (:a 9) (:e 5) (:b -6)) :key #'first))
 ----------------------------------------------------------------------------
 240514 火
 4 types of closures.
