@@ -3051,6 +3051,205 @@ Right way
 (equal '((:B -6))
        (after :b :a '((:d 7) (:c 12) (:a 9) (:e 5) (:b -6)) :key #'first))
 ----------------------------------------------------------------------------
+Case study: Birth of a utility
+
+Tanimoto exercise: Define a function (EQUALELTS LST) that returns T if and only if all the top-level elements of LST are EQUAL to each other.
+
+- EQUAL is a binary function. We want to generalize it to an arbitrary number of elements.
+One common pattern is to take a binary function and then employ REDUCE to extend it.
+
+Suppose that + only took 2 args:
+(+ 2 3) => 5
+
+REDUCE operates pairwise on an arbitrary list:
+(reduce #'+ '(8 9 4 7 2 1 6)) => 37
+
+The problem is that + is a different kind of function than EQUAL:
++: ℝ ⨯ ℝ -> ℝ
+In other words, the result of the function is the same type as the inputs.
+
+However,
+EQUAL: T ⨯ T -> 𝔹
+where 𝔹 = {t, nil}
+
+So REDUCE can feed the result of + back in as part of the next pair. Not so with EQUAL:
+(+ (+ (+ (+ (+ (+ 8 9) 4) 7) 2) 1) 6)
+
+(reduce #'equal '(a a a)) => NIL
+(equal (equal 'a 'a) 'a), i.e., (equal t 'a)
+
+But it's easy enough to use normal list-processing techniques to handle EQUALELTS.
+
+Experiments:
+(defun equalelts (l)
+  (if (null l)
+      t
+      (destructuring-bind (x . xs) l
+        (if (null xs)
+            t
+            (destructuring-bind (y . ys) xs
+              (and (equal x y)
+                   (or (null ys)
+                       (equalelts xs)))) ))))
+
+(defun equalelts (l)
+  (cond ((null l) t)
+        ((singlep l) t)
+        (t (and (equal (first l) (second l))
+                (equalelts (rest l)))) ))
+
+(defun equalelts (l)
+  (or (null l)
+      (singlep l)
+      (and (equal (first l) (second l))
+           (equalelts (rest l)))) )
+
+(defun equalelts (l &key (test #'equal))
+  (or (null l)
+      (destructuring-bind (x . more) l
+        (every #'(lambda (elt) (funcall test elt x)) more))))
+
+The final example above hints at two obvious improvements to Tanimoto's spec:
+1. Handle sequences (vectors, strings) rather than simply lists.
+2. Allow for different notions of equality: =, char=, string-equal
+
+The second issue is already handled by the keyword argument :TEST specified in the final EQUALELTS definition. This allows us to do things like this:
+(equalelts '(1.0 1 1d0)) => NIL ; Different numeric types are not EQUAL
+(equalelts '(1.0 1 1d0) :test #'=) => T ; But they are all numerically =
+
+(equalelts '("pung" "PUNG" "pUnG" "PunG")) => NIL
+(equalelts '("pung" "PUNG" "pUnG" "PunG") :test #'string=) => NIL
+(equalelts '("pung" "PUNG" "pUnG" "PunG") :test #'string-equal) => T ; Case-insensitive compare
+
+This last function uses EVERY instead of REDUCE. We pull the first element of the list out and then check that every other element is equal to it. We have to check for an empty list first, but EVERY works in all other cases. This includes the case of a singleton list where MORE is empty.
+
+The good news is that EVERY is actually a sequence function. We can apply it to vectors and strings as well:
+(every #'evenp #(2 4 6 8)) => T
+(every #'digit-char-p "132412") => T
+
+The only problem is that we can't use DESTRUCTURING-BIND to pull out the first element of these other types of sequences. However, I do have a library function that can do the job.
+
+Many other functional programming languages have TAKE and DROP functions:
+(take 5 '(a b c d e f g h i j k l m)) => (A B C D E)
+(drop 8 '(a b c d e f g h i j k l m)) => (I J K L M)
+(take 5 #(a b c d e f g h i j k l m)) => #(A B C D E)
+(drop 8 "Is this not pung?") => "not pung?"
+
+These aren't part of Common Lisp, but they are easy enough to define:
+(defgeneric drop (n seq)
+  (:documentation "Drop the first N elements of sequence SEQ."))
+(defmethod drop (n (seq list))
+  (nthcdr n seq))
+(defmethod drop (n (seq vector))
+ (subseq seq (min n (length seq))))
+
+(defgeneric take (n seq)
+  (:documentation "Take the first N elements of sequence SEQ."))
+(defmethod take (n (seq list))
+  (loop repeat n for elt in seq collect elt))
+(defmethod take (n (seq vector))
+  (subseq seq 0 (min n (length seq))))
+
+And then it's only one step further to bolt them together: TAKE-DROP
+(defgeneric take-drop (n seq)
+  (:documentation "Split a sequence at the Nth element. Return the subsequences before and after."))
+(defmethod take-drop :around (n seq)
+  (assert (typep n `(integer 0))
+          (n)
+          "N must be a non-negative integer.")
+  (call-next-method))
+(defmethod take-drop (n (seq list))
+  (do ((tail seq (rest tail))
+       (i 0 (1+ i)))
+      ((or (= i n) (endp tail)) (values (subseq seq 0 i) tail))))
+(defmethod take-drop (n (seq vector))
+  (values (take n seq) (drop n seq))) ; Works for strings too
+
+(take-drop 5 '(a b c d e f g h i j k l m))
+(A B C D E)
+(F G H I J K L M)
+(take-drop 8 #(a b c d e f g h i j k l m))
+#(A B C D E F G H)
+#(I J K L M)
+(take-drop 8 "Is this not pung?")
+"Is this "
+"not pung?"
+
+Now we see how to split any sequence into its first element and then all of the rest:
+(take-drop 1 '(1 2 3 4))
+(1)
+(2 3 4)
+(take-drop 1 #(1 2 3 4))
+#(1)
+#(2 3 4)
+(take-drop 1 "1234")
+"1"
+"234"
+
+(defun emptyp (seq)
+  (typecase seq
+    (list (null seq))
+    (vector (zerop (length seq)))) )
+
+(defun equalelts (seq &key (test #'equal))
+  (or (emptyp seq)
+      (multiple-value-bind (x more) (take-drop 1 seq)
+        (every (partial test (elt x 0)) more))))
+
+(equalelts #(a a a)) => T
+(equalelts "aaaaaaaaa") => T
+(equalelts "aaaAaAAaa") => NIL
+(equalelts "aaaAaAAaa" :test #'char-equal) => T
+
+Finally, we might consider a more subtle type of equality for objects that may not be strictly equal, but maybe parts of them are. Many Common Lisp sequence functions take a :KEY argument that is applied to an element before the :TEST:
+(equalelts '((a . 1) (a . 2) (a . 1) (a . 4))) => NIL
+(equalelts '((a . 1) (a . 2) (a . 1) (a . 4)) :key #'first) => T
+
+Final version!
+[This makes the comparison function a little more complicated.]
+(defun equalelts (seq &key (test #'equal) (key #'identity))
+  (or (emptyp seq)
+      (multiple-value-bind (take drop) (take-drop 1 seq)
+        (let ((exemplar (elt take 0)))
+          (every #'(lambda (elt)
+                     (funcall test (funcall key exemplar)
+                                   (funcall key elt)))
+                 drop)))) )
+
+Are Ramones equal?
+(defclass person ()
+  ((first-name :reader first-name :initarg :first)
+   (last-name :reader last-name :initarg :last)))
+
+(defmethod print-object ((p person) stream)
+  (print-unreadable-object (p stream :type t)
+    (format t "~A, ~A" (last-name p) (first-name p))))
+
+(defclass ramone (person) ())
+
+(defmethod initialize-instance :after ((r ramone) &rest initargs)
+  (declare (ignore initargs))
+  (with-slots (last-name) r
+    (setf last-name "Ramone")))
+
+(defvar *andy* (make-instance 'person :first "Andy" :last "Warhol"))
+*andy* => #<PERSON Warhol, Andy>
+
+(defvar *joey* (make-instance 'ramone :first "Joey"))
+*joey* => #<RAMONE Ramone, Joey>
+(defvar *dee-dee* (make-instance 'ramone :first "Dee Dee"))
+(defvar *tommy* (make-instance 'ramone :first "Tommy"))
+(defvar *johnny* (make-instance 'ramone :first "Johnny"))
+
+(equalelts (list *joey* *dee-dee* *tommy* *johnny*)) => NIL
+(equalelts (list *joey* *dee-dee* *tommy* *johnny*) :key #'last-name) => T
+
+Equivalence classes:
+(equalelts '(1 4 7 10 13)) =>NIL
+(equalelts '(1 4 7 10 13) :key #'(lambda (n) (mod n 3))) => T
+----------------------------------------------------------------------------
+
+
 240514 火
 4 types of closures.
 
