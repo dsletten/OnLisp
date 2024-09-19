@@ -3056,6 +3056,10 @@ Case study: Birth of a utility
 Tanimoto exercise: Define a function (EQUALELTS LST) that returns T if and only if all the top-level elements of LST are EQUAL to each other.
 
 - EQUAL is a binary function. We want to generalize it to an arbitrary number of elements.
+Essentially we want to augment EQUAL so that it behaves like =:
+(equal '(a b) '(a b)) => T
+(= 1 (- 3 2) (/ 8 8) (+ 1/2 1/2)) => T
+
 One common pattern is to take a binary function and then employ REDUCE to extend it.
 
 Example: Haskell has `max` and `maximum` functions
@@ -3064,14 +3068,16 @@ max 8 9
 maximum [9, 2, 11, 5, 17]
 17
 
-Simple in Common Lisp:
-(reduce #'max '(9 2 11 5 17))
-17
+Common Lisp only has the function MAX, but it is simple to employ it with a sequence:
+(reduce #'max '(9 2 11 5 17)) => 17
 
-Suppose that + only took 2 args:
+In fact, MAX already supports an arbitrary number of args, so we can just APPLY it to a list:
+(apply #'max '(9 2 11 5 17)) => 17
+
+But suppose that + only took 2 args:
 (+ 2 3) => 5
 
-REDUCE operates pairwise on an arbitrary list:
+We could use REDUCE to operate pairwise on an arbitrary list:
 (reduce #'+ '(8 9 4 7 2 1 6)) => 37
 
 The problem is that + is a different kind of function than EQUAL:
@@ -3086,7 +3092,7 @@ So REDUCE can feed the result of + back in as part of the next pair. Not so with
 (+ (+ (+ (+ (+ (+ 8 9) 4) 7) 2) 1) 6)
 
 (reduce #'equal '(a a a)) => NIL
-(equal (equal 'a 'a) 'a), i.e., (equal t 'a)
+(equal (equal 'a 'a) 'a), i.e., (equal t 'a) doesn't make any sense...
 
 But it's easy enough to use normal list-processing techniques to handle EQUALELTS.
 
@@ -3282,6 +3288,35 @@ Application: Poker hand
   (if (= (length hand) 5)
       (equalelts hand :key #'suit)
       nil))
+
+One last attempt:
+(defgeneric equalelts (seq &key test key)
+  (:documentation "Are all elements of SEQ equal with respect to TEST after applying KEY?"))
+(defmethod equalelts :around (seq &key test key)
+  (declare (ignore test key))
+  (or (emptyp seq)
+      (call-next-method)))
+(defmethod equalelts ((seq list) &key (test #'equal) (key #'identity))
+  (loop for elt in seq
+        with exemplar = (funcall key (elt seq 0))
+        always (funcall test exemplar (funcall key elt))))
+(defmethod equalelts ((seq vector) &key (test #'equal) (key #'identity))
+  (loop for elt across seq
+        with exemplar = (funcall key (elt seq 0))
+        always (funcall test exemplar (funcall key elt))))
+
+The significant difference is that this version doesn't copy any of the sequence in question as the earlier version did (with the TAKE-DROP). So this should be more efficient.
+
+The less significant differences:
+• It uses generic functions to handle lists and vectors.
+    This allows us to put an :AROUND method in front of
+    the specific implementations to handle the empty sequence case.
+• These use some fancy LOOP magic with the ALWAYS clause.
+    It does bug me that the 2 implementations are identical
+    save for the keyword needed to traverse specific sequence types
+    (IN vs. ACROSS)...
+
+(One subtle difference here is that these versions perform a redundant comparison of the first element with itself. That was the whole point of the TAKE-DROP, to pull one element out as the exemplar.)
 ----------------------------------------------------------------------------
 
 
