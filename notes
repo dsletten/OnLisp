@@ -2716,6 +2716,14 @@ Oz:
                 (list pivot)
                 (quicksort (remove-if-not (partial test pivot) xs) :test test)))) )
 
+Suppose TEST is #'<
+#'(lambda (elt) (< pivot elt))
+#'(lambda (elt) (funcall test pivot elt))
+
+Equivalent:
+((lambda (elt) (funcall test pivot elt)) 10)
+(funcall (partial test pivot) 10)
+
 For comparison (Haskell):
 quicksort :: (Ord a) => [a] -> [a]
 quicksort [] = []
@@ -2730,9 +2738,11 @@ Convert temperature:
 Fahrenheit -> Celsius
 Celsius -> Fahrenheit
 
+Simple formulas:
 F = 9/5 C + 32
 C = 5/9(F - 32)
 
+But wait, there's more!
 Two coplanar lines that are not parallel will intersect. Thus:
 F = 9/5 C + 32 intersects F = C. Where? (Answer below)
 
