@@ -2709,6 +2709,14 @@ Oz:
         (append (quicksort (remove-if (partial test pivot) xs) :test test)
                 (list pivot)
                 (quicksort (remove-if-not (partial test pivot) xs) :test test)))) )
+
+For comparison (Haskell):
+quicksort :: (Ord a) => [a] -> [a]
+quicksort [] = []
+quicksort (x:xs) =
+    let smallerOrEqual = [a | a <- xs, a <= x]
+        larger = [a | a <- xs, a > x]
+    in quicksort smallerOrEqual ++ [x] ++ quicksort larger
 ------------------------------------------------------------------
 Generalization overkill?
 
