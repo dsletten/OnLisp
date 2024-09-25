@@ -581,8 +581,14 @@ debugger invoked on a SIMPLE-ERROR in thread
 (deftype tally ()            ; <------
   `(member ,tally))
 
-(deftype unary ()            ; <------
-  `(or null (cons tally unary)))
+;; (deftype unary ()            ; <------ Infinite expansion!!!
+;;   `(or null (cons tally unary)))
+
+(defun unaryp (n)
+  (every #'(lambda (elt) (typep elt 'tally)) n))
+
+(deftype unary ()
+  '(satisfies unaryp))
 
 (defun unary (n)
   (loop repeat n collect tally))
@@ -2505,6 +2511,247 @@ Sidebar: compare SOME vs. FIND-IF
 SOME -> FIND-IF:
 (some f seq) -> (some #'(lambda (elt) (and (funcall f elt) elt)) seq)
 ----------------------------------------------------------------------------
+240925 水
+Case study
+
+Customize behavior with higher-order functions
+
+Quicksort
+2 implementations
+- QSORT
+  1. Works on vectors
+  2. Destructive. Sorts in place.
+- QUICKSORT
+  1. Works on lists.
+  2. Nondestructive. Builds sorted copy of input.
+
+Basic algorithm
+1. Choose pivot element. Place it in sorted position.
+2. Gather all elements less than or equal to pivot on left (unsorted).
+   (Less than or equal--accounts for duplicates of pivot.)
+3. Gather all elements greater than pivot on right (unsorted).
+4. Recursively sort left/right subsequences.
+
+Choose first elt as pivot
+----------------------
+|12| 3| 6|18| 7|15|10|
+----------------------
+         ||
+         \/
+----------------------
+|10| 3| 6| 7|12|15|18|
+----------------------
+Low          ^   High
+             |
+
+I. QSORT
+(defun qsort (a)
+  (labels ((qsort-aux (a low high)
+             (if (>= low high)
+                 a
+                 (let ((middle (partition a low high)))
+                   (qsort-aux a low (1- middle))
+                   (qsort-aux a (1+ middle) high))))
+           (partition (a low high)
+             (let* ((pivot (aref a low))
+                    (new-pivot-index (lower a pivot low high)))
+               (setf (aref a new-pivot-index) pivot)
+               new-pivot-index))
+           (lower (a pivot low high)
+             (cond ((= low high) high)
+                   ((< (aref a high) pivot) 
+                    (setf (aref a low) (aref a high))
+                    (raise a pivot (1+ low) high))
+                   (t (lower a pivot low (1- high)))) )
+           (raise (a pivot low high)
+             (cond ((= low high) high)
+                   ((< pivot (aref a low))
+                    (setf (aref a high) (aref a low))
+                    (lower a pivot low (1- high)))
+                   (t (raise a pivot (1+ low) high)))) )
+    (qsort-aux a 0 (1- (length a)))) )
+
+1. Choose pivot (first elt)
+----------------------
+|12| 3| 6|18| 7|15|10|
+----------------------
+2. Pivot: 12
+An empty location exists where pivot was "removed".
+If `high` pointer points to elt < pivot, move to left
+----------------------
+|  | 3| 6|18| 7|15|10|
+----------------------
+  ^                 ^
+  |low              |high
+3. Increment `low` pointer. Look for low elts that belong to right of pivot
+----------------------
+|10| 3| 6|18| 7|15|  |
+----------------------
+     ^              ^
+     |low           |high
+----------------------
+|10| 3| 6|18| 7|15|  |
+----------------------
+        ^           ^
+        |low        |high
+----------------------
+|10| 3| 6|18| 7|15|  |
+----------------------
+           ^        ^
+           |low     |high
+Copy to hole on right.
+4. Decrement `high` pointer. Resume looking for low elts.
+----------------------
+|10| 3| 6|  | 7|15|18|
+----------------------
+           ^     ^
+           |low  |high
+----------------------
+|10| 3| 6|  | 7|15|18|
+----------------------
+           ^  ^
+           |  |high
+           |low
+5. Copy elt to hole. Increment `low` pointer.
+----------------------
+|10| 3| 6| 7|  |15|18|
+----------------------
+              ^
+              |high
+              |low
+6. low = high. Copy pivot.
+----------------------
+|10| 3| 6| 7|12|15|18|
+----------------------
+7. Recursively sort subsequence to left of pivot and that to right.
+
+II. QUICKSORT
+Very clear declarative program
+(defun quicksort (l)
+  (if (null l)
+      '()
+      (destructuring-bind (pivot . xs) l
+        (let ((lower (loop for elt in xs when (<= elt pivot) collect elt))
+              (higher (loop for elt in xs when (> elt pivot) collect elt)))
+          (append (quicksort lower)
+                  (list pivot)
+                  (quicksort higher)))) ))
+
+Beautiful. But nearly useless.
+Only sorts numbers in ascending order!!!
+
+Should be able to customize by telling how to compare any two items.
+
+Total ordering
+For any elements a, b either:
+1. a < b
+2. a > b
+3. a = b
+
+Three separate comparisons: <, >, =
+
+Instead:
+1. a < b
+2. b < a
+3. Otherwise a and b are equal. Consequence of first two tests failing.
+
+(defun quicksort (l &key (test #'<))
+  (if (null l)
+      '()
+      (destructuring-bind (pivot . xs) l
+        (let ((lower (loop for elt in xs unless (funcall test pivot elt) collect elt))
+              (higher (loop for elt in xs when (funcall test pivot elt) collect elt)))
+          (append (quicksort lower :test test)
+                  (list pivot)
+                  (quicksort higher :test test)))) ))
+
+(funcall test pivot elt)
+(< pivot elt)
+
+
+(quicksort (list 61 82 67 4 98 20 37 85)) => (4 20 37 61 67 82 85 98)
+(quicksort (list 61 82 67 4 98 20 37 85) :test #'>) => (98 85 82 67 61 37 20 4)
+(quicksort (list "pung" "foo" "bar" "baz") :test #'string>) => ("pung" "foo" "baz" "bar")
+(quicksort (list "Pung" "FOO" "BAR" "baz") :test #'string-greaterp) => ("Pung" "FOO" "baz" "BAR")
+(quicksort '((a . 5) (b . 9) (k . 3) (p . 4) (z . 2)) :test #'(lambda (a b) (< (cdr a) (cdr b)))) => ((Z . 2) (K . 3) (P . 4) (A . 5) (B . 9))
+
+Cleaner with sequence functions
+
+https://www.lispworks.com/documentation/HyperSpec/Body/c_sequen.htm
+Many sequence functions come in 3 flavors:
+foo
+foo-if
+foo-if-not
+
+(remove 5 '(1 2 3 4 5 2 3 4 5 6)) => (1 2 3 4 2 3 4 6)
+(remove-if #'evenp #(1 2 3 4 5)) => #(1 3 5)
+(remove-if-not #'oddp #(1 2 3 4 5)) => #(1 3 5)
+
+https://www.lispworks.com/documentation/HyperSpec/Body/f_rm_rm.htm
+The functions delete-if-not and remove-if-not are deprecated.
+
+Oh really? Who says that isn't the case?
+   Welcome to the Common Lisp HyperSpec.
+   I hope it serves your need.          
+                                        
+   --Kent Pitman, X3J13 Project Editor  
+
+REMOVE-IF-NOT is often called "filter".
+Clojure:
+(filter odd? '(1 2 3 4 5)) => (1 3 5)
+Oz:
+{Filter [1 2 3 4 5] IsOdd} => [1 3 5]
+
+(defun quicksort (l &key (test #'<))
+  (if (null l)
+      '()
+      (destructuring-bind (pivot . xs) l
+        (append (quicksort (remove-if (partial test pivot) xs) :test test)
+                (list pivot)
+                (quicksort (remove-if-not (partial test pivot) xs) :test test)))) )
+------------------------------------------------------------------
+Generalization overkill?
+
+Convert temperature:
+Fahrenheit -> Celsius
+Celsius -> Fahrenheit
+
+F = 9/5 C + 32
+C = 5/9(F - 32)
+
+Two coplanar lines that are not parallel will intersect. Thus:
+F = 9/5 C + 32 intersects F = C. Where?
+
+C = 5/9(F + 40) - 40
+F = 9/5(C + 40) - 40
+
+(defun convert (m)
+  #'(lambda (temperature)
+      (- (* (+ temperature 40) m) 40)))
+(defun f->c (f)
+  (funcall (convert 5/9) f))
+(defun c->f (c)
+  (funcall (convert 9/5) c))
+
+
+
+
+
+Spoiler!
+9
+- C + 32 = C
+5
+
+9
+- C - C = -32
+5
+
+4
+- C = -32
+5
+
+C = -40
+----------------------------------------------------------------------------
 §4.2 Invest in abstraction
 Utility as capital expense
 - Write once
@@ -3351,6 +3598,13 @@ II. Closure over function binding
 FLET exited. BAR retains local function binding.
 (bar 4) => 4
 (bar 5) => 85
+
+Oz example (58 页)
+(labels ((q (x) (cons 'stat x))
+         (p (x) (q x)))
+  (flet ((q (x) (cons 'dyn x)))
+    (p 'hello)))
+=> (STAT . HELLO)
 
 2 "Downward Funargs"
 - Dynamic extent
