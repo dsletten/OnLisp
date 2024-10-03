@@ -952,6 +952,283 @@ most-positive-fixnum
 ; cpu time (total)  0.000010 sec user, 0.000000 sec system
 (time (sum 1000000000))
 ; cpu time (total)  0.000009 sec user, 0.000000 sec system
+----------------------------------------------------------------------------
+241002 水
+Winston tail recursion examples
+(Lisp 3rd Edition https://www.amazon.com/Patrick-Winston-Lisp-3rd-third/dp/B008WDDO5K/)
+
+Reduction - In the context of tail recursion, a single derived problem whose solution
+            provides the answer to a given problem directly, without further computation.
+            The derived problem is typically simpler than the original problem.
+
+"Whenever a problem is converted into a new problem such that no further computation is 
+necessary once the new problem is solved, the new problem is said to be a _reduction_ of
+the original problem. Whenever a recursive procedure is defined such that all recursive calls
+to itself are reductions, that procedure is said to be _tail recursive_."
+
+(defun fact (n)
+  (if (zerop n)
+      1
+      (* n (fact (1- n)))) )
+
+* (fact 6)
+  0: (CORE::FACT 6)
+    1: (CORE::FACT 5)
+      2: (CORE::FACT 4)
+        3: (CORE::FACT 3)
+          4: (CORE::FACT 2)
+            5: (CORE::FACT 1)
+              6: (CORE::FACT 0)
+              6: FACT returned 1
+            5: FACT returned 1 <-- Not done yet (* 1 1).
+          4: FACT returned 2 <-- Each step requires more computation.
+        3: FACT returned 6 <-- These are not the same value.
+      2: FACT returned 24 <-- Each step is a different problem.
+    1: FACT returned 120
+  0: FACT returned 720
+720
+
+(defun factorial (n &optional (result 1))
+  (if (zerop n)
+      result
+      (factorial (1- n) (* n result)))) ; This states that (factorial n result) [current call] is
+                                        ;   whatever is returned by (factorial (1- n) (* n result)) [recursive call]
+                                        ;   They are the same value. I.e.,
+                                        ;   (factorial (1- n) (* n result)) [new problem]
+                                        ;   is a reduction of (factorial n result) [original problem]
+
+* (factorial 6)
+  0: (CORE::FACTORIAL 6)
+    1: (CORE::FACTORIAL 5 6)
+      2: (CORE::FACTORIAL 4 30)
+        3: (CORE::FACTORIAL 3 120)
+          4: (CORE::FACTORIAL 2 360)
+            5: (CORE::FACTORIAL 1 720)
+              6: (CORE::FACTORIAL 0 720)
+              6: FACTORIAL returned 720 <-- Done
+            5: FACTORIAL returned 720 <-- Just keep returning same result
+          4: FACTORIAL returned 720
+        3: FACTORIAL returned 720
+      2: FACTORIAL returned 720
+    1: FACTORIAL returned 720
+  0: FACTORIAL returned 720
+720
+
+Convoluted example - count elements in a list (LENGTH)
+(defun count-elements-mutually (l)
+  (count-elements-indirectly l 0))
+
+(defun count-elements-indirectly (l result)
+  (if (endp l)
+      result
+      (count-elements-buffer (rest l) (1+ result))))
+
+(defun count-elements-buffer (l result)
+  (count-elements-indirectly l result))
+
+Apparent mutual recursion, but for any 2 successive calls to COUNT-ELEMENTS-INDIRECTLY,
+the second is merely a reduction of the first:
+(count-elements-indirectly l result)
+  (count-elements-buffer (rest l) (1+ result))
+    (count-elements-indirectly l' result') [Where l' = (rest l), result' = (1+ result)]
+
+* (count-elements-mutually '(a b c d))
+  0: (CORE::COUNT-ELEMENTS-INDIRECTLY (CORE::A CORE::B CORE::C CORE::D) 0)
+    1: (CORE::COUNT-ELEMENTS-BUFFER (CORE::B CORE::C CORE::D) 1)
+      2: (CORE::COUNT-ELEMENTS-INDIRECTLY (CORE::B CORE::C CORE::D) 1)
+        3: (CORE::COUNT-ELEMENTS-BUFFER (CORE::C CORE::D) 2)
+          4: (CORE::COUNT-ELEMENTS-INDIRECTLY (CORE::C CORE::D) 2)
+            5: (CORE::COUNT-ELEMENTS-BUFFER (CORE::D) 3)
+              6: (CORE::COUNT-ELEMENTS-INDIRECTLY (CORE::D) 3)
+                7: (CORE::COUNT-ELEMENTS-BUFFER NIL 4)
+                  8: (CORE::COUNT-ELEMENTS-INDIRECTLY NIL 4)
+                  8: COUNT-ELEMENTS-INDIRECTLY returned 4
+                7: COUNT-ELEMENTS-BUFFER returned 4
+              6: COUNT-ELEMENTS-INDIRECTLY returned 4
+            5: COUNT-ELEMENTS-BUFFER returned 4
+          4: COUNT-ELEMENTS-INDIRECTLY returned 4
+        3: COUNT-ELEMENTS-BUFFER returned 4
+      2: COUNT-ELEMENTS-INDIRECTLY returned 4
+    1: COUNT-ELEMENTS-BUFFER returned 4
+  0: COUNT-ELEMENTS-INDIRECTLY returned 4
+4
+
+Exercise
+;;;
+;;;    5-1 Tail-recursive NTHCDR (AKA, DROP)
+;;;    
+;; (skip-first-n 3 '(a b c d e f)) => (D E F)
+;; (nthcdr 3 '(a b c d e f)) => (D E F)
+
+(defun skip-first-n (n l)
+  (cond ((endp l) '())
+        ((zerop n) l)
+        (t (skip-first-n (1- n) (rest l)))) )
+
+(deftest test-skip-first-n ()
+  (let ((l (loop for i from 1 to 10 collect i)))
+    (check
+     (loop for i upto 11
+           do (assert (equal (nthcdr i l) 
+                             (skip-first-n i l))
+                      () 
+                      "Expected: ~S Actual: ~S" (nthcdr i l) (skip-first-n i l))
+           finally (return t)))) )
+
+(defun skip-first-n* (n l)
+  (assert (not (minusp n)) () "Bad value for N: ~A" n)
+  (labels ((skip (n l)
+             (cond ((endp l)'())
+                   ((zerop n) l)
+                   (t (skip (1- n) (rest l)))) ))
+    (skip n l)))
+
+(deftest test-skip-first-n* ()
+  (let ((l (loop for i from 1 to 10 collect i)))
+    (check
+     (handler-case (skip-first-n* -1 '(a b c))
+       (error (e)
+         (format t "Got expected error: ~A~%" e)
+         t)
+       (:no-error (obj)
+         (declare (ignore obj))
+         (error "Did not detect bad value for N")))
+     (loop for i upto 11
+           do (assert (equal (nthcdr i l)
+                             (skip-first-n* i l))
+                      () 
+                      "Expected: ~S Actual: ~S" (nthcdr i l) (skip-first-n* i l))
+           finally (return t)))) )
+
+;;;
+;;;    5-2 Non tail-recursive BUTLAST (AKA, TAKE)
+;;;
+;; (keep-first-n 4 '(a b c d e f)) => (A B C D)
+;; (butlast '(a b c d e f) 2) => (A B C D)
+
+(defun keep-first-n (n l)
+  (cond ((endp l) '())
+        ((zerop n) '())
+        (t (cons (first l) (keep-first-n (1- n) (rest l)))) ))
+
+(deftest test-keep-first-n ()
+  (let ((l (loop for i from 1 to 10 collect i)))
+    (check
+     (loop for i upto 11
+           do (assert (equal (butlast l (max 0 (- 10 i)))
+                             (keep-first-n i l))
+                      () 
+                      "Expected: ~S Actual: ~S" (butlast l (max 0 (- 10 i))) (keep-first-n i l))
+           finally (return t)))) )
+
+(defun keep-first-n* (n l)
+  (assert (not (minusp n)) () "Bad value for N: ~A" n)
+  (labels ((keep (n l)
+             (cond ((endp l) '())
+                   ((zerop n) '())
+                   (t (cons (first l) (keep (1- n) (rest l)))) )))
+    (keep n l)))
+
+(deftest test-keep-first-n* ()
+  (let ((l (loop for i from 1 to 10 collect i)))
+    (check
+     (handler-case (keep-first-n* -1 '(a b c))
+       (error (e)
+         (format t "Got expected error: ~A~%" e)
+         t)
+       (:no-error (obj)
+         (declare (ignore obj))
+         (error "Did not detect bad value for N")))
+     (loop for i upto 11
+           do (assert (equal (butlast l (max 0 (- 10 i)))
+                             (keep-first-n* i l)) 
+                      () 
+                      "Expected: ~S Actual: ~S" (butlast l (max 0 (- 10 i))) (keep-first-n* i l))
+           finally (return t)))) )
+
+;;;
+;;;    5-3 Tail-recursive
+;;;
+(defun keep-first-n-cleverly (n l)
+  (assert (not (minusp n)) () "Bad value for N: ~A" n)
+  (labels ((keep (n l result)
+             (cond ((endp l) (nreverse result))
+                   ((zerop n) (nreverse result))
+                   (t (keep (1- n) (rest l) (cons (first l) result)))) ))
+    (keep n l '())))
+
+(deftest test-keep-first-n-cleverly ()
+  (let ((l (loop for i from 1 to 10 collect i)))
+    (check
+     (handler-case (keep-first-n-cleverly -1 '(a b c))
+       (error (e)
+         (format t "Got expected error: ~A~%" e)
+         t)
+       (:no-error (obj)
+         (declare (ignore obj))
+         (error "Did not detect bad value for N")))
+     (loop for i upto 11
+           do (assert (equal (butlast l (max 0 (- 10 i)))
+                             (keep-first-n-cleverly i l))
+                      ()
+                      "Expected: ~S Actual: ~S" (butlast l (max 0 (- 10 i))) (keep-first-n-cleverly i l))
+           finally (return t)))) )
+----------------------------------------------------------------------------
+241002 水
+Detecting cycles (circular list)
+(shadow 'length)
+(defun length (l)
+  (labels ((count-elements (l result)
+             (if (endp l)
+                 result
+                 (count-elements (rest l) (1+ result)))) )
+  (count-elements l 0)))
+
+(defvar *circular* (list 'a 'b 'c 'd))
+(sdraw *circular*)
+
+[*|*]--->[*|*]--->[*|*]--->[*|*]--->NIL
+ |        |        |        |
+ v        v        v        v
+ A        B        C        D
+
+(setf (rest (last *circular*)) *circular*)
+(A B C D A B C D A B C D A B C D A B C D A B C D A B C D A B C D A B C D A B C
+ D A B C D A B C D A B C D A B C D A B C D A B C D A B C D A B C D A B C D A B
+ C D A B C D A B C D A B C D A B C D A B C D A B C D A B C D A B C D A B C D A
+ B C D A B C D A B C D A B C D A B C D A B C D A B C D A B C D A B C D A B C D
+ A B C D A B C D A B C D A B C D A B C D A B C D A B C D A B C D A B C D A B C
+D'oh!
+
+(sdraw *circular*)
+
+[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->etc.
+ |        |        |        |        |        |        |        |
+ v        v        v        v        v        v        v        v
+ A        B        C        D        A        B        C        D
+
+(length *circular*) => ...
+
+(list-length *circular*) => NIL
+
+https://www.lispworks.com/documentation/HyperSpec/Body/f_list_l.htm
+Function LIST-LENGTH
+
+(defun list-length (x)  
+   (do ((n 0 (+ n 2))           ;Counter.
+        (fast x (cddr fast))    ;Fast pointer: leaps by 2.
+        (slow x (cdr slow)))    ;Slow pointer: leaps by 1.
+       (nil)
+     ;; If fast pointer hits the end, return the count.
+     (when (endp fast) (return n))
+     (when (endp (cdr fast)) (return (+ n 1)))
+     ;; If fast pointer eventually equals slow pointer,
+     ;;  then we must be stuck in a circular list.
+     ;; (A deeper property is the converse: if we are
+     ;;  stuck in a circular list, then eventually the
+     ;;  fast pointer will equal the slow pointer.
+     ;;  That fact justifies this implementation.)
+     (when (and (eq fast slow) (> n 0)) (return nil))))
 ============================================================================
 230708 土
 §2.9
@@ -2702,7 +2979,7 @@ Oh really? Who says that isn't the case?
 
 Kent has confirmed in comp.lang.lisp that the deprecation of the IF-NOT functions should be ignored.
 
-REMOVE-IF-NOT is often called "filter".
+REMOVE-IF-NOT is often called "filter". (Perl's grep!)
 Clojure:
 (filter odd? '(1 2 3 4 5)) => (1 3 5)
 Oz:
@@ -3681,6 +3958,38 @@ IV. Closure over TAGBODY tag
 2 
 3 Enough of that...
 NIL
+----------------------------------------------------------------------------
+240929 日
+Oz closure examples:
+(let ((y 5))
+  (flet ((lower-bound (x)
+           (if (>= x y)
+               x
+               y)))
+    (let ((c (lower-bound 3)))) ))
+
+(let ((y 5))
+  (defun lower-bound (x)
+    (if (>= x y)
+        x
+        y)))
+(let ((c (lower-bound 3))))
+
+(let ((y 5))
+  (flet ((lower-bound (x)
+           (if (>= x y)
+               x
+               y)))
+    (let* ((y 10)
+           (c (lower-bound 3)))) ))
+
+(let ((y 5))
+  (flet ((lower-bound (x)
+           (if (>= x y)
+               x
+               y)))
+    (let* ((x 10)
+           (c (lower-bound 3)))) ))
 ----------------------------------------------------------------------------
         
 240508 水
