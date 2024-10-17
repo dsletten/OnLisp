@@ -3944,6 +3944,7 @@ His versions work, but there are some obvious improvements:
 • What is the underlying similarity of MOST and BEST? Can it be refactored?
 
 I. Handle vectors too
+- Unfortunate code duplication due to LOOP semantics
 (defun most (f seq)
   (if (emptyp seq)
       (values nil nil)
@@ -3962,7 +3963,7 @@ I. Handle vectors too
                       when (> score max) do (setf winner elt max score)
                       finally (return (values winner max)))) )))
 
-II. Grab the LEAST value along the way
+II. Grab the LEAST value too along the way
 (defun most-least (f seq)
   (if (emptyp seq)
       nil
@@ -3988,6 +3989,7 @@ II. Grab the LEAST value along the way
                       finally (return (values winner max loser min)))) )))
 
 III. MOSTN -> MOST-LEAST-N
+- MOSTN reimplemented
 (defun mostn (f seq)
   (if (emptyp seq)
       nil
@@ -4065,6 +4067,7 @@ III. MOSTN -> MOST-LEAST-N
                       finally (return (values (elements winners) max (elements losers) min)))) )))
 
 IV. Refactor!
+- MOST and LEAST are pretty much the same just opposite order
 (defgeneric extremum (f order seq)
   (:documentation "Locate the first element in SEQ that yields the extreme (in terms of ORDER) value when F is applied. The secondary value is the value returned by F for that element."))
 (defmethod extremum :around (f order seq)
@@ -4093,9 +4096,11 @@ IV. Refactor!
   (extremum f #'< seq))
 
 V. All of the MOST/LEAST functions:
+- The documentation is incorrect.
+  ORDER no longer matters since we always grab both the highs and lows.
 (defgeneric extrema (f order seq)
   (:documentation "Locate the elements in SEQ that yield the extreme (in terms of ORDER) values both high and low when F is applied. The secondary values are the extreme values returned by F for those elements."))
-(defmethod extrema :around (f order seq)  ; <-------    Mistake!
+(defmethod extrema :around (f order seq)  ; <-------    Mistake! ORDER not actually used anymore
   (if (emptyp seq)
       (values nil nil nil nil)
       (call-next-method)))
@@ -4144,6 +4149,8 @@ V. All of the MOST/LEAST functions:
         end
         finally (return (values (elements winners) max (elements losers) min))))
 
+These should all be defined in terms of MOST-LEAST-N rather than calling EXTREMA directly.
+See final refactor in section VI.
 (defun most (f seq)
   (multiple-value-bind (winners max) (extrema f #'> seq)
     (values (first winners) max)))
@@ -4166,6 +4173,8 @@ V. All of the MOST/LEAST functions:
   (extrema f #'> seq))
 
 VI. What about BEST?
+Nice simple definition for BEST. Unfortunately it is not easily integrated with the
+refactoring below.
 (defun best (f seq)
   "Return the first element as if the elements of SEQ were sorted by means of F."
   (labels ((a-vs-b (b a)
@@ -4175,9 +4184,8 @@ VI. What about BEST?
         (reduce #'a-vs-b seq))))
 
 
-
-
 MOST vs. BEST
+These 2 functions seem to serve a similar role:
 (most #'length '((a b) (a b c) (a) (e f g)))
 (A B C)
 3
@@ -4188,6 +4196,13 @@ MOST vs. BEST
 5
 (best #'> (mapcar #'identity '(1 2 3 4 5)))
 5
+
+MOST applies a "key" to each element before ordering them.
+BEST applies a "test" to determine the ordering of elts.
+
+Complete refactor. Everything is defined in terms of EXTREMA methods. They
+capture all of the high/low values plus the corresponding "scores".
+All of the specific functions simply extract the parts they need from these results.
 
 (defgeneric extrema (seq &key test key)
   (:documentation "Locate the elements in SEQ that yield the extreme (in terms of TEST) values both high and low when KEY is applied. The secondary values are the extreme values returned by KEY for those elements."))
@@ -4240,6 +4255,8 @@ MOST vs. BEST
         end
         finally (return (values (elements winners) max (elements losers) min))))
 
+All of the MOST/LEAST functions derived from MOST-LEAST-N:
+- This cares about the KEY but not the TEST
 (defun most-least-n (f seq)
   (extrema seq :key f))
 
@@ -4262,6 +4279,8 @@ MOST vs. BEST
     (declare (ignore winners max))
     (values losers min)))
 
+All of the BEST/WORST functions derived from BEST-WORST-N:
+- This cares about the TEST but not the KEY
 (defun best-worst-n (f seq)
   (multiple-value-bind (winners max losers min) (extrema seq :test f)
     (declare (ignore max min))
@@ -4285,7 +4304,185 @@ MOST vs. BEST
   (multiple-value-bind (winners losers) (best-worst-n f seq)
     (declare (ignore winners))
     losers))
+-------------------------------------------
+Experiments with REDUCE.
+I. Lost of CONSing. RESULT is built and destructured for each elt
+(defun extrema (seq &key (test #'>) (key #'identity))
+  (if (emptyp seq)
+      (values nil nil nil nil)
+      (let* ((winners (make-linked-queue))
+             (losers (make-linked-queue))
+             (max (funcall key (elt seq 0)))
+             (min max))
+        (destructuring-bind (winners max losers min)
+            (reduce #'(lambda (result elt)
+                        (destructuring-bind (winners max losers min) result
+                          (let ((score (funcall key elt)))
+                            (cond ((funcall test score max)
+                                   (make-empty winners)
+                                   (enqueue winners elt)
+                                   (setf max score))
+                                  ((not (funcall test max score))
+                                   (enqueue winners elt)))
+                            (cond ((funcall test min score)
+                                   (make-empty losers)
+                                   (enqueue losers elt)
+                                   (setf min score))
+                                  ((not (funcall test score min))
+                                   (enqueue losers elt))))
+                          (list winners max losers min)))
+                    seq
+                    :initial-value (list winners max losers min))
+          (values (elements winners) max (elements losers) min)))) )
 
+II. Use reduction function for side effect rather than value
+- This is the style used in Graham's original implementations but with
+  DOLIST rather than REDUCE.
+(defun extrema (seq &key (test #'>) (key #'identity))
+  (if (emptyp seq)
+      (values nil nil nil nil)
+      (let* ((winners (make-linked-queue))
+             (losers (make-linked-queue))
+             (max (funcall key (elt seq 0)))
+             (min max))
+        (reduce #'(lambda (_ elt) ; Don't care about first arg
+                    (let ((score (funcall key elt)))
+                      (cond ((funcall test score max)
+                             (make-empty winners)
+                             (enqueue winners elt)
+                             (setf max score))
+                            ((not (funcall test max score))
+                             (enqueue winners elt)))
+                      (cond ((funcall test min score)
+                             (make-empty losers)
+                             (enqueue losers elt)
+                             (setf min score))
+                            ((not (funcall test score min))
+                             (enqueue losers elt)))) ) ; Value returned is irrelevant
+                seq
+                :initial-value :foo) ; Irrelevant (but necessary) initial value
+        (values (elements winners) max (elements losers) min))))
+
+III. Outsource the logic to a separate class
+(defclass scorer ()
+  ((winners :initform (make-linked-queue))
+   (max)
+   (losers :initform (make-linked-queue))
+   (min)))
+
+(defun make-scorer (initial)
+  (let ((scorer (make-instance 'scorer)))
+    (with-slots (min max) scorer
+      (setf max initial
+            min initial))
+    scorer))
+
+(defun update (scorer elt &key test key)
+  (let ((score (funcall key elt)))
+    (with-slots (winners max losers min) scorer
+      (cond ((funcall test score max)
+             (make-empty winners)
+             (enqueue winners elt)
+             (setf max score))
+            ((not (funcall test max score))
+             (enqueue winners elt)))
+      (cond ((funcall test min score)
+             (make-empty losers)
+             (enqueue losers elt)
+             (setf min score))
+            ((not (funcall test score min))
+             (enqueue losers elt)))) ))
+
+(defun results (scorer)
+  (with-slots (winners max losers min) scorer
+    (values (elements winners) max (elements losers) min)))
+
+(defun extrema (seq &key (test #'>) (key #'identity))
+  (if (emptyp seq)
+      (values nil nil nil nil)
+      (results (reduce #'(lambda (scorer elt)
+                           (update scorer elt :test test :key key)
+                           scorer)
+                       seq
+                       :initial-value (make-scorer (funcall key (elt seq 0)))) )))
+-------------------------------------------
+Using a generator for lists/vectors. Consolidates LOOP for single EXTREMA function.
+
+(defclass generator () ())
+(defclass list-generator (generator)
+  ((contents :initarg :contents)))
+(defclass vector-generator (generator)
+  ((contents :initarg :contents)
+   (index :initform 0)))
+
+(defgeneric exhaustedp (generator)
+  (:documentation "Has every element of a generator's sequence been consumed?"))
+(defmethod exhaustedp ((g list-generator))
+  (with-slots (contents) g
+    (null contents)))
+(defmethod exhaustedp ((g vector-generator))
+  (with-slots (contents index) g
+    (= index (length contents))))
+
+(defgeneric current (generator)
+  (:documentation "Retrieve current element of the generator's sequence."))
+(defmethod current :around ((g generator))
+  (if (exhaustedp g)
+      (error "The generator has been exhausted.")
+      (call-next-method)))
+(defmethod current ((g list-generator))
+  (with-slots (contents) g
+    (first contents)))
+(defmethod current ((g vector-generator))
+  (with-slots (contents index) g
+    (elt contents index)))
+
+(defgeneric next (generator)
+  (:documentation "Retrieve next element of the generator's sequence."))
+(defmethod next :around ((g generator))
+  (if (exhaustedp g)
+      (error "The generator has been exhausted.")
+      (call-next-method)))
+(defmethod next ((g list-generator))
+  (with-slots (contents) g
+    (prog1 (current g)
+      (setf contents (rest contents)))) )
+(defmethod next ((g vector-generator))
+  (with-slots (contents index) g
+    (prog1 (current g)
+      (incf index))))
+
+(defun make-generator (seq)
+  (etypecase seq
+    (list (make-instance 'list-generator :contents seq))
+    (vector (make-instance 'vector-generator :contents seq))))
+
+(defun extrema (seq &key (test #'>) (key #'identity))
+  (if (emptyp seq)
+      (values nil nil nil nil)
+      (let ((generator (make-generator seq)))
+        (loop with winners = (make-linked-queue)
+              with losers = (make-linked-queue)
+              with max = (funcall key (current generator))
+              with min = max
+              for elt = (next generator)
+              for score = (funcall key elt)
+              if (funcall test score max)
+                do (make-empty winners)
+                   (enqueue winners elt)
+                   (setf max score)
+              else if (not (funcall test max score))
+                do (enqueue winners elt)
+              end
+              if (funcall test min score)
+                do (make-empty losers)
+                   (enqueue losers elt)
+                   (setf min score)
+              else if (not (funcall test score min))
+                do (enqueue losers elt)
+              end
+              until (exhaustedp generator)
+              finally (return (values (elements winners) max (elements losers) min)))) ))
 ----------------------------------------------------------------------------
 
 240514 火
