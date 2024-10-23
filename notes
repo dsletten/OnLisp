@@ -4438,7 +4438,7 @@ Using a generator for lists/vectors. Consolidates LOOP for single EXTREMA functi
     (elt contents index)))
 
 (defgeneric next (generator)
-  (:documentation "Retrieve next element of the generator's sequence."))
+  (:documentation "Retrieve current element of the generator's sequence and advance to next."))
 (defmethod next :around ((g generator))
   (if (exhaustedp g)
       (error "The generator has been exhausted.")
@@ -4483,6 +4483,252 @@ Using a generator for lists/vectors. Consolidates LOOP for single EXTREMA functi
               end
               until (exhaustedp generator)
               finally (return (values (elements winners) max (elements losers) min)))) ))
+----------------------------------------------------------------------------
+241023 水
+§4.5 Mapping
+
+Review
+• List mapping functions
+Granddaddy MAPCAR
+Apply a function F to each element of a list, yielding a new function:
+(mapcar #'1+ '(1 2 3 4 5)) => (2 3 4 5 6)
+(mapcar #'char-upcase '(#\a #\b #\c)) => (#\A #\B #\C)
+
+Works across multiple input lists:
+(mapcar #'vector '(1 2 3 4 5) '(:p :q :r :s :t)) => (#(1 :P) #(2 :Q) #(3 :R) #(4 :S) #(5 :T))
+
+Variations
+MAPCAR sends the CAR of each CONS to F.
+MAPLIST sends each CONS itself to F:
+(maplist #'identity '(1 2 3 4 5)) => ((1 2 3 4 5) (2 3 4 5) (3 4 5) (4 5) (5))
+MAPLIST is more fundamental. Don't really need MAPCAR:
+(maplist #'(lambda (l) (1+ (first l))) '(1 2 3 4 5)) => (2 3 4 5 6)
+(maplist (compose #'1+ #'first) '(1 2 3 4 5)) => (2 3 4 5 6)
+
+(maplist #'(lambda (l) (char-upcase (first l))) '(#\a #\b #\c)) => (#\A #\B #\C)
+(maplist (compose #'char-upcase #'first) '(#\a #\b #\c)) => (#\A #\B #\C)
+
+LOOP analogs:
+CARs
+(loop for n in '(1 2 3 4 5) collect (1+ n)) => (2 3 4 5 6)
+            ^^
+CONSes
+(loop for l on '(1 2 3 4 5) collect l) => ((1 2 3 4 5) (2 3 4 5) (3 4 5) (4 5) (5))
+            ^^
+
+MAPCAN/MAPCON correspond to MAPCAR/MAPLIST but expect results to be lists themselves.
+Each result is concatenated into single final result list (destructively using NCONC):
+(mapcar #'list '(1 2 3 4 5) '(:p :q :r :s :t)) => ((1 :P) (2 :Q) (3 :R) (4 :S) (5 :T))
+(mapcan #'list '(1 2 3 4 5) '(:p :q :r :s :t)) => (1 :P 2 :Q 3 :R 4 :S 5 :T)
+
+(maplist #'identity '(1 2 3 4 5)) => ((1 2 3 4 5) (2 3 4 5) (3 4 5) (4 5) (5))
+(mapcon #'identity '(1 2 3 4 5)) ; Whoops! List surgery causes infinite loop...
+(mapcon #'copy-list '(1 2 3 4 5)) => (1 2 3 4 5 2 3 4 5 3 4 5 4 5 5)
+
+CLHS says:
+(mapcan f x1 ... xn) ≡ (apply #'nconc (mapcar f x1 ... xn))
+(mapcon f x1 ... xn) ≡ (apply #'nconc (maplist f x1 ... xn))
+
+MAPC/MAPL also correspond to MAPCAR/MAPLIST but are used for side effects:
+(mapc (compose #'write-char #'char-upcase) (coerce "Is this not pung?" 'list))
+IS THIS NOT PUNG?  <-- Side effect
+(#\I #\s #\  #\t #\h #\i #\s #\  #\n #\o #\t #\  #\p #\u #\n #\g #\?)  <-- Input is list is simply returned
+
+Clearer?
+(loop for ch across "Is this not pung?" do (write-char (char-upcase ch)))
+IS THIS NOT PUNG?
+NIL
+
+CLHS example:
+(defvar *dummy* '())
+(mapl #'(lambda (x) (push x *dummy*)) '(1 2 3 4)) ; Push successive CONSes
+*dummy* => ((4) (3 4) (2 3 4) (1 2 3 4))
+
+• List mapping functions
+MAP like MAPCAR applies F to elts of 1+ sequences. Type of result sequence is given.
+Works with mixed types of inpute sequences:
+(map 'vector #'sqrt #(2 4 6 8)) => #(1.4142135 2.0 2.4494898 2.828427)
+(map 'list #'sqrt #(2 4 6 8)) => (1.4142135 2.0 2.4494898 2.828427)
+(map 'vector #'+ '(1 2 3 4) #(0 1 0 1)) => #(1 3 3 5)
+(map 'list #'(lambda (ch n) (make-string n :initial-element ch)) "Cat" '(3 2 1)) => ("CCC" "aa" "t")
+
+-------------------------------------------
+Graham's functions
+
+What's wrong with this?
+Apply FN to integers 1,...,10
+Reader macro:
+#[1 10] => (1 2 3 4 5 6 7 8 9 10)
+(mapcar #'sqrt #[1 10]) => (1.0 1.4142135 1.7320508 2.0 2.236068 2.4494898 2.6457512 2.828427 3.0 3.1622777)
+
+Graham (pg. 6):
+(mapcar fn
+        (do* ((x 1 (1+ x))
+              (result (list x) (push x result)))
+             ((= x 10) (nreverse result))))
+
+The verbosity of Graham's example highlights the wasted work of building the input list (1 ... 10).
+The function must build the result list. Why bother generating an input list?
+
+Instead:
+(map1-n #'sqrt 10) => (1.0 1.4142135 1.7320508 2.0 2.236068 2.4494898 2.6457512 2.828427 3.0 3.1622777)
+(map0-n #'list 9) => ((0) (1) (2) (3) (4) (5) (6) (7) (8) (9))
+
+Both defined in terms of general MAPA-B:
+(mapa-b #'abs -3 8) => (3 2 1 0 1 2 3 4 5 6 7 8)
+Optional STEP
+(mapa-b #'abs -3 8 5) => (3 2 7)
+
+Graham's version:
+(defun map0-n (fn n)
+  (mapa-b fn 0 n))
+(defun map1-n (fn n)
+  (mapa-b fn 1 n))
+(defun mapa-b (fn a b &optional (step 1))
+  (do ((i a (+ i step))
+       (result nil))
+      ((> i b) (nreverse result))
+      (push (funcall fn i) result)))
+
+Why not descending sequence?
+(mapa-b #'abs 8 -3) => (8 7 6 5 4 3 2 1 0 1 2 3)
+
+Take two:
+(defun mapa-b (f a b &optional (step 1))
+  (assert (plusp step) () "Step increment must be positive.")
+  (if (<= a b)
+      (loop for i from a to b by step collect (funcall f i))
+      (loop for i from a downto b by step collect (funcall f i))))
+-------------------------------------------
+Let's make ranges!
+
+Old - bad
+(defun make-range (start &optional end (step 1))
+  (etypecase start
+    (character (typecase end
+                 (character
+                   (if (char> start end)
+                       (loop for i from (char-code start) downto (char-code end) by step collect (code-char i))
+                       (loop for i from (char-code start) to (char-code end) by step collect (code-char i))))
+                 (null (loop for i from 0 below (char-code start) by step collect (code-char i)))
+                 (otherwise (error "Mismatched input types."))))
+    (number (typecase end
+              (number (if (> start end)
+                          (loop for i from start downto end by step collect i)
+                          (loop for i from start to end by step collect i)))
+              (null (loop for i from 0 below start by step collect i))
+              (otherwise (error "Mismatched input types.")))) ))
+
+Why not let MAPA-B do the work?
+
+New - better
+(defun range (start &optional end (step 1))                       ; END is optional for RANGE. Required for MAKE-RANGE.
+  (make-range start end step))                                    ;    Can't dispatch on type of OPTIONAL param.
+(defgeneric make-range (start end step)
+  (:documentation "Create a list from START to END inclusive by STEP."))
+(defmethod make-range ((start character) (end character) (step integer))
+  (mapa-b #'code-char (char-code start) (char-code end) step))
+(defmethod make-range ((start character) (end null) (step integer))
+  (declare (ignore end))
+  (if (char> start #\0)
+      (make-range #\0 (code-char (1- (char-code start))) step)
+      '()))
+(defmethod make-range ((start character) end step)                 ; Default is an error
+  (error "Mismatched input types."))
+(defmethod make-range ((start number) (end number) (step number))
+  (mapa-b #'identity start end step))
+(defmethod make-range ((start number) (end null) (step number))
+  (declare (ignore end))
+  (if (plusp start)
+      (make-range 0 (1- start) step)
+      '()))
+(defmethod make-range ((start number) end step)
+  (error "Mismatched input types."))
+
+Haskell vs. Clojure
+[1..10] => [1,2,3,4,5,6,7,8,9,10]
+
+(range 1 10) => (1 2 3 4 5 6 7 8 9)
+(range 1 (inc 10)) => (1 2 3 4 5 6 7 8 9 10) ; Ugh...
+(range 5) => (0 1 2 3 4)
+
+My Common Lisp version:
+(range 1 10) => (1 2 3 4 5 6 7 8 9 10)
+(range 5) => (0 1 2 3 4)
+(range 1 3 1/10) => (1 11/10 6/5 13/10 7/5 3/2 8/5 17/10 9/5 19/10
+                     2 21/10 11/5 23/10 12/5 5/2 13/5 27/10 14/5 29/10 3)
+(range #\a #\e) => (#\a #\b #\c #\d #\e)
+(range #\s #\j) => (#\s #\r #\q #\p #\o #\n #\m #\l #\k #\j)
+(range 4 #\j)
+  Mismatched input types.
+(range #\a #\e 2) => (#\a #\c #\e)
+(range #\a #\e 2.1)
+  Mismatched input types.
+
+Add range syntax
+(set-dispatch-macro-character #\# #\[
+  #'(lambda (stream ch arg)
+      (declare (ignore ch arg))
+      (destructuring-bind (m &optional n step) (read-delimited-list #\] stream t)
+        (if step
+            (if (and (numberp step)
+                     (or (and (numberp m) (numberp n))
+                         (and (characterp m) (characterp n))))
+                `',(range m n step)
+                `(range ,m ,n ,step))
+            (if n
+                (if (or (and (numberp m) (numberp n))
+                        (and (characterp m) (characterp n)))
+                    `',(range m n)
+                    `(range ,m ,n))
+                (if (or (numberp m) (characterp m))
+                    `',(range m)
+                    `(range ,m)))) )))
+
+#[1 10] => (1 2 3 4 5 6 7 8 9 10)
+#[5] => (0 1 2 3 4)
+#[1 3 1/10] => (1 11/10 6/5 13/10 7/5 3/2 8/5 17/10 9/5 19/10
+                2 21/10 11/5 23/10 12/5 5/2 13/5 27/10 14/5 29/10 3)
+#[#\a #\e] => (#\a #\b #\c #\d #\e)
+-------------------------------------------
+More Graham mapping functions
+(defun map-> (fn start test-fn succ-fn)
+  (do ((i start (funcall succ-fn i))
+       (result '()))
+      ((funcall test-fn i) (nreverse result))
+    (push (funcall fn i) result)))
+
+(defun map-> (f start test step)
+  "Collect repeated application of the function F to START as it is transformed by the STEP function until TEST returns true."
+  (loop for obj = start then (funcall step obj)
+        until (funcall test obj)
+        collect (funcall f obj)))
+
+;;;
+;;;    Non-destructive alternative to MAPCAN.
+;;;    
+(defun mappend (f &rest lists)
+  (apply #'append (apply #'mapcar f lists)))
+
+;;;
+;;;    Map over multiple lists in sequence, accumulating all results.
+;;;    
+(defun mapcars (fn &rest lsts)
+  (let ((result '()))
+    (dolist (l lsts)
+      (dolist (obj l)
+	(push (funcall fn obj) result)))
+    (nreverse result)))
+
+(defun mapcars (f &rest lists)
+  "Map the function F over each element of each list argument provided."
+  (loop with result = (make-linked-queue)
+        for list in lists
+        do (loop for elt in list
+                 do (enqueue result (funcall f elt)))
+        finally (return (elements result))))
+
+
 ----------------------------------------------------------------------------
 
 240514 火
