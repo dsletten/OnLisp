@@ -4544,7 +4544,7 @@ CLHS example:
 (mapl #'(lambda (x) (push x *dummy*)) '(1 2 3 4)) ; Push successive CONSes
 *dummy* => ((4) (3 4) (2 3 4) (1 2 3 4))
 
-• List mapping functions
+• Sequence mapping functions
 MAP like MAPCAR applies F to elts of 1+ sequences. Type of result sequence is given.
 Works with mixed types of inpute sequences:
 (map 'vector #'sqrt #(2 4 6 8)) => #(1.4142135 2.0 2.4494898 2.828427)
@@ -4552,6 +4552,14 @@ Works with mixed types of inpute sequences:
 (map 'vector #'+ '(1 2 3 4) #(0 1 0 1)) => #(1 3 3 5)
 (map 'list #'(lambda (ch n) (make-string n :initial-element ch)) "Cat" '(3 2 1)) => ("CCC" "aa" "t")
 
+Omitting result type - MAP used for side effect only:
+(map nil (compose #'print #'sqrt) '(2 4 6 8))
+
+1.4142135                  <-- Output (side effect)
+2.0 
+2.4494898 
+2.828427 
+NIL                        <-- Result
 -------------------------------------------
 Graham's functions
 
