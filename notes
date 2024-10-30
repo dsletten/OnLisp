@@ -4536,6 +4536,7 @@ IS THIS NOT PUNG?  <-- Side effect
 
 Clearer?
 (loop for ch across "Is this not pung?" do (write-char (char-upcase ch)))
+(loop for ch in (coerce "Is this not pung?" 'list) do (write-char (char-upcase ch)))
 IS THIS NOT PUNG?
 NIL
 

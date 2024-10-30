@@ -1,0 +1,326 @@
+241029 火
+List Surgery
+
+Lists in the real world
+-------------------------------------------
+
+____________________________
+|                          |
+| 1. Groceries             |
+| 2. Bank                  |
+| 3. Book store            |
+| 4. Dry cleaning          |
+| 5. Book store            |
+|                          |
+|                          |
+|                          |
+----------------------------
+
+Forgot an item?
+Copy list to new paper. Insert new item.
+____________________________         ____________________________
+|                          |         |                          |
+| 1. Groceries             |         | 1. Groceries             |
+| 2. Bank                  |         | 2. Bank                  |
+| 3. Book store            |         | 3. Bakery                |
+| 4. Dry cleaning          |   --\   | 4. Book store            |
+| 5. Book store            |   --/   | 5. Dry cleaning          |
+|                          |         | 6. Book store            |
+|                          |         |                          |
+|                          |         |                          |
+----------------------------         |                          |
+                                     ----------------------------
+
+
+Alternatively, rip list. Splice in new line(s).
+Renumber items.
+
+____________________________         ____________________________
+|                          |         |                          |
+| 1. Groceries             |         | 1. Groceries             |
+| 2. Bank                  |         | 2. Bank                  |
+vvvvvvvvvvvvvvvvvvvvvvvvvvvv         |//////////////////////////|
+                                     | 3. Bakery                |
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^   --\   |//////////////////////////|
+| 3. Bakery                |   --/   | X4. Book store           |
+vvvvvvvvvvvvvvvvvvvvvvvvvvvv         | X5. Dry cleaning         |
+                                     | X6. Book store           |
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^         |                          |
+| 3. Book store            |         |                          |
+| 4. Dry cleaning          |         |                          |
+| 5. Book store            |         ----------------------------
+|                          |
+|                          |
+|                          |
+----------------------------
+
+Lisp Lists
+-------------------------------------------
+
+Often easier to perform non-destructive operation:
+(let ((errands (list "Groceries" "Bank" "Book store" "Dry cleaning" "Book store")))
+  (append (subseq errands 0 2) (cons "Bakery" (subseq errands 2))))
+("Groceries" "Bank" "Bakery" "Book store" "Dry cleaning" "Book store")
+
+Even easier with our tools:
+(let ((errands (list "Groceries" "Bank" "Book store" "Dry cleaning" "Book store")))
+  (multiple-value-bind (before after) (take-drop 2 errands)
+    (append before (cons "Bakery" after))))
+("Groceries" "Bank" "Bakery" "Book store" "Dry cleaning" "Book store")
+
+Below we examine destructive splicing.
+
+Non-destructive
+"Update" a CONS cell
+(defvar *c* (cons 1 2))
+(1 . 2)
+
+[*|*]
+ | |
+ v v
+ 1 2
+
+(defvar *d* *c*) => *D*
+(eq *c* *d*) => T
+
+(cons 3 (cdr *c*)) => (3 . 2)
+Same CDR, new CONS cell
+[*|*]
+ | |
+ v v
+ 3 2
+
+*c* => (1 . 2)
+
+(cons (car *c*) 4) => (1 . 4)
+Same CAR, new CONS cell
+[*|*]
+ | |
+ v v
+ 1 4
+
+Destructive modification of CONS cell
+- Old school: RPLACA/RPLACD
+(rplaca *c* 3) => (3 . 2)
+Same CONS cell, new CAR
+*c* => (3 . 2)
+
+  [*|*]
+  /x |
+ / x v
+3  X 2
+
+
+(rplacd *c* 4) => (3 . 4)
+Same CONS cell, new CDR
+*c* => (3 . 4)
+
+[*|*]
+ | x\
+ v x \
+ 3 X  4
+
+
+(eq *c* *d*) => T
+*d* => (3 . 4)
+
+- Common Lisp: SETF CAR/CDR (or FIRST/REST)
+(setf (car *c*) 3)
+(setf (cdr *c*) 4)
+
+Changing value of existing CONS is easy.
+-------------------------------------------
+
+(substitute :bar :foo '(a b :foo c d :foo e :foo f))
+(A B :BAR C D :BAR E :BAR F)
+(substitute :bar :foo '(a b :foo c d :foo e :foo f) :count 1)
+(A B :BAR C D :FOO E :FOO F)
+(substitute :bar :foo '(a b :foo c d :foo e :foo f) :start 4)
+(A B :FOO C D :BAR E :BAR F)
+
+(substitute-if :even #'evenp '(0 1 2 3 4 5))
+(:EVEN 1 :EVEN 3 :EVEN 5)
+
+(mapcar #'(lambda (elt) (if (evenp elt) (1+ elt) elt)) '(0 1 2 3 4 5))
+(1 1 3 3 5 5)
+
+Destructive NSUBSTITUTE/NSUBSTITUTE-IF
+(defvar *l* (list 'a 'b :foo 'c 'd :foo 'e :foo 'f))
+*l* => (A B :FOO C D :FOO E :FOO F)
+(nsubstitute :bar :foo *l*) => (A B :BAR C D :BAR E :BAR F)
+*l* => (A B :BAR C D :BAR E :BAR F)
+
+(defvar *l* (list 0 1 2 3 4 5))
+*l* => (0 1 2 3 4 5)
+(mapl #'(lambda (l) (when (evenp (first l)) (incf (first l)))) *l*) => (1 1 3 3 5 5)
+*l* => (1 1 3 3 5 5)
+
+Adding/removing CONS is harder
+-------------------------------------------
+
+(defvar *l1* (list 1 2 3 4 5))
+(defvar *l2* (rest *l1*))
+*l1* => (1 2 3 4 5)
+*l2* => (2 3 4 5)
+(push :one *l2*) => (:ONE 2 3 4 5)
+*l2* => (:ONE 2 3 4 5)
+*l1* => (1 2 3 4 5)
+
+[*|*]
+ |  \    
+ v   \    
+:ONE  \
+       \
+        \
+         v
+[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->NIL
+ |        |        |        |        |
+ v        v        v        v        v
+ 1        2        3        4        5
+
+(push :x (rest *l2*)) => (:X 2 3 4 5)
+*l1* => (1 2 3 4 5)
+*l2* => (:ONE :X 2 3 4 5)
+
+(push :y (cdddr *l1*)) => (:Y 4 5)
+*l1* => (1 2 3 :Y 4 5)
+*l2* => (:ONE :X 2 3 :Y 4 5)
+
+
+(macroexpand-1 '(push :x (rest *l2*)))
+(LET* ((#:*L2*637 *L2*))
+  (SB-KERNEL:%RPLACD #:*L2*637 (CONS :X (REST #:*L2*637))))
+T
+
+List surgery
+-------------------------------------------
+
+- Splice (add CONS)
+  - At current node
+  - After current node
+- Snip (remove CONS)
+  - Head of chain
+  - Tail of chain
+
+Easy to splice in a new CONS _after_ the one we are currently pointing to.
+(setf *l1* (list 1 2 3 4 5))
+(setf *l2* (rest *l1*))
+
+*l1*     *l2*
+ |        |  
+ v        v 
+[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->NIL
+ |        |        |        |        |
+ v        v        v        v        v
+ 1        2        3        4        5
+
+(setf (cdr *l2*) (cons 2.5 (cdr *l2*)))
+(2.5 3 4 5)
+
+*l1*     *l2*  >[*|*]
+ |        |   /  |  \    
+ v        v  /   v   \
+[*|*]--->[*|*]  2.5   v
+ |        |           [*|*]--->[*|*]--->[*|*]--->NIL
+ v        v            |        |        |          
+ 1        2            v        v        v          
+                       3        4        5          
+
+[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->NIL
+ |        |        |        |        |        |
+ v        v        v        v        v        v
+ 1        2       2.5       3        4        5
+
+*l1* => (1 2 2.5 3 4 5)
+*l2* => (2 2.5 3 4 5)
+
+Trickier when trying to splice _at_ the current CONS. Must overwrite current
+CONS so that anything pointing to it sees change:
+(setf *l1* (list 1 2 3 4 5))
+(setf *l2* (rest *l1*))
+
+*l1*     *l2*
+ |        |  
+ v        v 
+[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->NIL
+ |        |        |        |        |
+ v        v        v        v        v
+ 1        2        3        4        5          
+
+(setf (cdr *l2*) (cons (car *l2*) (cdr *l2*))
+      (car *l2*) 1.5)
+
+*l1*     *l2*  >[*|*]
+ |        |   /  |  \ 
+ v        v  /   |   \
+[*|*]--->[*|*]   |    >[*|*]--->[*|*]--->[*|*]--->NIL
+ |        |      |      |        |        |          
+ v        v      |      v        v        v          
+ 1        2 <----+      3        4        5          
+
+
+*l1*     *l2*  >[*|*]                                
+ |        |   /  |  \                                
+ v        v  /   |   \                               
+[*|*]--->[*|*]   |    >[*|*]--->[*|*]--->[*|*]--->NIL
+ |        |      |      |        |        |          
+ v        v      v      v        v        v          
+ 1       1.5     2      3        4        5          
+
+
+[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->NIL
+ |        |        |        |        |        |
+ v        v        v        v        v        v
+ 1       1.5       2        3        4        5
+
+*l1* => (1 1.5 2 3 4 5)
+*l2* => (1.5 2 3 4 5)
+
+;;;
+;;;    Destructively splice OBJ as the Ith element of L.
+;;;    In other words, the existing Ith and further elements are pushed down by one element.
+;;;    
+(defun nsplice-before (l i obj)
+  (cond ((null l) (error "Bad index to splice."))
+        ((zerop i) (setf (cdr l) (cons (car l) (cdr l)) 
+                         (car l) obj))
+        (t (nsplice-before (cdr l) (1- i) obj))))
+
+;;;
+;;;    Destructively splice OBJ after Ith element of L.
+;;;    
+(defun nsplice-after (l i obj)
+  (cond ((null l) (error "Bad index to splice."))
+        ((zerop i) (setf (cdr l) (cons obj (cdr l))))
+        (t (nsplice-after (cdr l) (1- i) obj))))
+
+;;;
+;;;    Special case when elt to be removed is final elt. Must set CDR of previous CONS to NIL.
+;;;    
+(defun nsnip (l i)
+  (cond ((null l) (error "Bad index to snip."))
+        ((and (= i 1) (null (cddr l))) (setf (rest l) nil))
+        ((zerop i) (setf (first l) (second l) ; Copy CAR/CDR of 2nd CONS to this CONS. Thus 1st CONS is copy of 2nd. 2nd CONS becomes redundant (1st CONS circumvents it, points to 3rd CONS.)
+                         (rest l) (cddr l)))
+        (t (nsnip (rest l) (1- i)))) )
+
+(deftest test-nsplice-before ()
+  (check
+   (let ((l (list 10 20 30 40))) (nsplice-before l 2 25) (equal l '(10 20 25 30 40)))
+   (let ((l (list 10 20 30 40))) (nsplice-before l 0 3) (equal l '(3 10 20 30 40)))
+   (let ((l (list 80))) (nsplice-before l 0 70) (equal l '(70 80)))) )
+
+(deftest test-nsplice-after ()
+  (check
+   (let ((l (list 10 20 30 40))) (nsplice-after l 2 35) (equal l '(10 20 30 35 40)))
+   (let ((l (list 10 20 30 40))) (nsplice-after l 0 13) (equal l '(10 13 20 30 40)))
+   (let ((l (list 80))) (nsplice-after l 0 81) (equal l '(80 81)))) )
+
+(deftest test-nsnip ()
+  (check
+   (let ((l (copy-list '(a b c d e)))) (nsnip l 0) (equal l '(b c d e)))
+   (let ((l (copy-list '(a b c d e)))) (nsnip l 1) (equal l '(a c d e)))
+   (let ((l (copy-list '(a b c d e)))) (nsnip l 2) (equal l '(a b d e)))
+   (let ((l (copy-list '(a b c d e)))) (nsnip l 3) (equal l '(a b c e)))
+   (let ((l (copy-list '(a b c d e)))) (nsnip l 4) (equal l '(a b c d)))) )
+
