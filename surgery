@@ -199,7 +199,7 @@ List surgery
   - At current node
   - After current node
 - Snip (remove CONS)
-  - Head of chain
+  - Arbitrary CONS
   - Tail of chain
 
 Easy to splice in a new CONS _after_ the one we are currently pointing to.
@@ -275,6 +275,49 @@ CONS so that anything pointing to it sees change:
 
 *l1* => (1 1.5 2 3 4 5)
 *l2* => (1.5 2 3 4 5)
+
+
+Most snipping is easy:
+(setf *l1* (list 1 2 3 4 5))
+(setf *l2* (rest *l1*))
+
+*l1*     *l2*
+ |        |  
+ v        v 
+[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->NIL
+ |        |        |        |        |
+ v        v        v        v        v
+ 1        2        3        4        5          
+
+(setf (car *l2*) (cadr *l2*)
+      (cdr *l2*) (cddr *l2*))
+
+*l1*     *l2*
+ |        |  
+ v        v 
+[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->NIL
+ |        x\       |        |        |
+ v        x \      v        v        v
+ 1        X  ----->3        4        5          
+
+
+*l1*     *l2*  -----------
+ |        |   /           \
+ v        v  /             v
+[*|*]--->[*|*]    [*|*]--->[*|*]--->[*|*]--->NIL
+ |        x\       |        |        |
+ v        x \      v        v        v
+ 1        X  ----->3        4        5          
+
+
+[*|*]--->[*|*]--->[*|*]--->[*|*]--->NIL
+ |        |        |        |
+ v        v        v        v
+ 1        3        4        5
+
+*l1* => (1 3 4 5)
+*l2* => (3 4 5)
+
 
 ;;;
 ;;;    Destructively splice OBJ as the Ith element of L.
