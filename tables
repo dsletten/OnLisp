@@ -1,0 +1,84 @@
+Beyond simple sequential collections of data such as lists or arrays, many programming languages
+provide a type of collection that allows pairing values with arbitrary keys. These collections
+are known by various names such as dictionaries, as a dictionary associates definitions with
+words; tables, as a table pairs the fields of a row with a primary key; or in general, maps,
+which pair elements from one set with those of another. Common Lisp has three built-in table
+data types, and one comes in two flavors. So there are four choices to consider.
+
+1. Association lists (alists or a-lists for short)
+   An association list is a linked-list based table of arbitrary keys and values.
+   Elements of this list are key/value pair sublists:
+   '((john guitar) (paul bass) (george guitar) (ringo drums))
+
+2. General property lists (plists or p-lists)
+   A property list is another linked-list data structure, but the elements of such a list
+   are the alternating keys and values themselves as though an association list has had its
+   nested structure flattened:
+   '(john guitar paul bass george guitar ringo drums)
+
+   Plists have slightly different semantics than alists. One distinction is that, while
+   alists may employ any object as a key, only symbols should serve as keys for a plist.
+   This is due to the mechanism to look up keys on the property list.
+
+3. Symbol property lists
+   Every Common Lisp symbol is a substantial object in memory that has several values
+   potentially associated with it. One of the values tied to each symbol is a property list
+   as described in 2. above. All of the operations on property lists are available to symbol
+   property lists. However, they should be used with some caution as they are globally visible
+   (within their package -- there is no point in putting a property list on an uninterned
+   symbol). Consequently they carry the risk of conflicts in modification as do all global
+   mutable values.
+
+4. Hashtables
+   Finally, Common Lisp provides built-in hashtable support. Hashtables furnish efficient
+   retrieval and update for large tables with many entries. While it's true that Common Lisp
+   does not define a convenient literal syntax for hashtables as some languages do (e.g., Ruby:
+   {:a => 1, :b => 2, :c => 3}), this is a somewhat spurious complaint for three reasons.
+
+   First, while a hashtable implementation of a dictionary is warranted for a large number of
+   key/value pairs, an association list is actually a better choice for a smaller dictionary.
+   And alists have an even simpler literal representation: ((:a 1) (:b 2) (:c 3)). Moreover,
+   a dictionary large enough to justify a hashtable would not be initialized by a literal value
+   embedded in source code. The values would come from a file or database. This is the same in
+   Common Lisp as with any other language.
+
+   Second, if absolutely necessary, it is simple to define a reader macro to add new syntax to
+   Common Lisp to allow hashtable literals. One could adopt the syntax of Clojure maps, for
+   example: {"pung" 1 "foo" 2 "bar" 3}
+   (This still does not address the _printable_ representation as opposed to this _readable_
+   representation.)
+
+   A third weakness in the complaint about literal syntax is that such syntax is less flexible.
+   A Ruby hash literal cannot specify which equality test the table should use. Likewise, none
+   of the other configuration details to an explicit call to MAKE-HASH-TABLE (e.g.,
+   :REHASH-SIZE, :REHASH-THRESHOLD) are available in Ruby.
+
+Four main operations are possible with a dictionary/table:
+1. Add a new entry to the table.
+2. Retrieve the value associated with a key (or an entire key/value entry).
+3. Update an entry, associating a new value with an existing key.
+4. Remove an entry from the table. The given key no longer has a value associated with it.
+
+It's not surprising that these operations correlate to the fundamental actions on a table in a
+relational database (CRUD): Create, Read, Update, Delete
+[or (CRAP): Create, Replicate, Append, Process
+    (DAVE): Delete, Add, View, Edit
+    https://en.wikipedia.org/wiki/Create,_read,_update_and_delete]
+
+Another similar set of actions supports RESTful API's (HTTP verbs).
+[Your mileage may vary on _how_ similar they are: https://softwareengineering.stackexchange.com/questions/120716/difference-between-rest-and-crud]
+
+Here is a comparison of similar ideas from SQL/REST and the Lisp table datatypes discussed
+below:
+        +--------------------------------------------------------------------+
+        |SQL      |REST       |Alist           |Plist         |Hashtable     |
++-------+---------+-----------+----------------+--------------+--------------+
+|CREATE |insert   |POST (PUT) |ACONS           |(SETF GET(F)) |(SETF GETHASH)|
++-------+---------+-----------+----------------+--------------+--------------+
+|READ   |select   |GET        |ASSOC           |GET(F)        |GETHASH       |
++-------+---------+-----------+----------------+--------------+--------------+
+|UPDATE |update   |PUT        |SETF+ASSOC      |(SETF GET(F)) |(SETF GETHASH)|
+|       |         |           |(Shadow ACONS)  |              |              |
++-------+---------+-----------+----------------+--------------+--------------+
+|DELETE |delete   |DELETE     |REMOVE          |REMF/REMPROP  |REMHASH       |
++-------+---------+-----------+----------------+--------------+--------------+
