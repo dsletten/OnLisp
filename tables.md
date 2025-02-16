@@ -297,7 +297,7 @@ corresponding [RASSOC/RASSOC-IF/RASSOC-IF-NOT](https://www.lispworks.com/documen
 `(rassoc 'yellow *table2*) => (BANANA . YELLOW)`  
 `(rassoc 'orange *table2*) => (ORANGE . ORANGE)`
 
-However, despite the implication of a `reverse' association, these functions still search from
+However, despite the implication of a _reverse_ association, these functions still search from
 the head of the alist--the ordered pairs are considered to be reversed. Thus, the first entry
 whose _value_ matches is returned:  
 `(rassoc 1 '((d . 1) (c . 1) (b . 2) (a . 1))) => (D . 1)`
@@ -375,12 +375,15 @@ or
 ## Property Lists
 
 A property list (plist) is like an alist without any nested structure. The key/value pairs are
-simply adjacent elements of the top-level plist structure: `(<K1> <V1> <K2> <V2> <K3> <V3>)`
-rather than `((<K1> <V1>) (<K2> <V2>) (<K3> <V3>))`. Consequently, the plist should contain an
-even number of elements, and there is no dotted list variant as with alists.
+simply adjacent elements of the top-level plist structure:  
+`(<K1> <V1> <K2> <V2> <K3> <V3>)`  
+rather than  
+`((<K1> <V1>) (<K2> <V2>) (<K3> <V3>))`  
+Consequently, the plist should contain an even number of elements, and there is no dotted list
+variant as with alists.
 
 In typical Lisp usage, a _property_ _indicator_ and a _property_ _value_ jointly establish a
-property. (Sometimes the word "property" simply refers to the property value.)
+[property](https://www.lispworks.com/documentation/HyperSpec/Body/26_glo_p.htm#property). (Sometimes the word "property" simply refers to the property value.)
 
 There is no analogous PAIRLIS function to initialize a plist, but it is easy enough to write
 one:
@@ -390,9 +393,9 @@ one:
         for val in vals
         collect key
         collect val))
-```
 
 (make-plist '(a b c) '(1 2 3)) => (A 1 B 2 C 3)
+```
 
 However, plists are typically built incrementally rather than starting with a predefined set of
 properties.
@@ -402,35 +405,138 @@ hard-wired to use EQ as the test to locate keys. Not only does this preclude the
 as keys, it also makes the use of characters and numbers unreliable too (implementation-
 dependent). Consequently, plists normally only use symbols (which includes keywords) as keys.
 
-We can use the function GETF to look up the value for a given key. But GETF differs from ASSOC
+We can use the function [GETF](https://www.lispworks.com/documentation/HyperSpec/Body/f_getf.htm) to look up the value for a given key. But GETF differs from ASSOC
 in three ways:
+
 1. Parameter order. The plist comes first then the indicator
-   (getf plist 'a) vs. (assoc 'a alist)
+   `(getf plist 'a)` vs. `(assoc 'a alist)`
 2. GETF returns merely the value (if found) rather than the entry for the key.
 3. GETF can supply a default value to be used if no entry is found.
 
+```
 (defvar *p1* (list :a 1 :b 2 :c 3))
 
 (getf *p1* :c) => 3
 (getf *p1* :d) => NIL
 (getf *p1* :d -1) => -1
+```
 
 However, just like ASSOC, GETF returns the value of the first matching key that it encounters.
 So it is possible to shadow a key as with alists:
+```
 (defvar *p2* (list* :c 8 *p1*))
 *p1* => (:A 1 :B 2 :C 3)
 *p2* => (:C 8 :A 1 :B 2 :C 3)
 
 (getf *p2* :c) => 8
 (getf *p1* :c) => 3
+```
 
-(LIST* is not specifically a property list function, but it can serve as ACONS does for alists.)
+([LIST*](https://www.lispworks.com/documentation/HyperSpec/Body/f_list_.htm) is not specifically a property list function, but it can serve as ACONS does for alists.)
 
 GETF is, in fact, an accessor function. This means that it can also be used to (destructively)
 update the value for a key via SETF:
+```
 (setf (getf *p1* :c) 4)
 
 *p1* => (:A 1 :B 2 :C 4)
 (getf *p1* :c) => 4
+```
+
+Furthermore, either of these techniques we've just examined will add a new entry to the plist:
+```
+(setf *p1* (list* :f 9 *p1*)) => (:F 9 :A 1 :B 2 :C 4) ; Shadow
+(setf (getf *p1* :e) -6) ; Destructively modify
+*p1* => (:E -6 :F 9 :A 1 :B 2 :C 4)
+```
+
+There is thus no discrepancy between adding and updating as with alists.
+
+An entry can be removed using [REMF](https://www.lispworks.com/documentation/HyperSpec/Body/m_remf.htm), which destructively modifies the property list:
+```
+(remf *p1* :b)
+*p1* => (:E -6 :F 9 :A 1 :C 4)
+```
+
+There is an additional function [GET-PROPERTIES](https://www.lispworks.com/documentation/HyperSpec/Body/f_get_pr.htm) that will return the value of the first key found of a group of specified indicators:
+`(get-properties *p1* '(:a :f :c)) => :F; 9; (:F 9 :A 1 :C 4)`  
+
+No analog to RASSOC exists for plists, but it could be defined:
+```
+(defun rgetf (plist val)
+  (getf (reverse plist) val))
+```
+
+## Symbol Property Lists
+
+The most common use of property lists (historically) was the plists that are automatically
+associated with symbols. A [symbol](https://www.lispworks.com/documentation/HyperSpec/Body/t_symbol.htm) object is a complex structure that has multiple attributes ("cells") associated with
+it when it is instantiated. One of these is the symbol's property list, which is initially
+empty. It can be retrieved by means of the function [SYMBOL-PLIST](https://www.lispworks.com/documentation/HyperSpec/Body/f_symb_4.htm):
+```
+* 'glurp ; Interned by reader
+GLURP
+* (symbol-plist 'glurp) ; Initially empty
+NIL
+```
+
+Just like the general plists above, a symbol's property list is simply a list:  
+`(listp (symbol-plist 'pung)) => T`
+and it can be abused, for example, storing an odd number of elements:
+```
+(push 'foo (symbol-plist 'pung))
+(symbol-plist 'pung) => (FOO)
+```
+However, the plist should normally hold an even number of elements (key/value pairs) as with
+any property list.
+
+A symbol's entire property list can be assigned by use of SETF with SYMBOL-PLIST:
+`(setf (symbol-plist 'pung) (list :foo 1 :bar 9))`  
+But CLHS discourages this:   
+> The use of _setf_ should be avoided, since a symbol's property list is a global resource  
+> that can contain information established and depended upon by unrelated programs in
+> the same Lisp image.  
+
+A symbol's plist could be manipulated by means of the property list functions already introduced (GETF, REMF): `(getf (symbol-plist 'pung) 'foo)`. But Common Lisp provides a second group of
+functions specifically for use with symbol plists.
+
+To retrieve a property use the function [GET](https://www.lispworks.com/documentation/HyperSpec/Body/f_get.htm):  
+`(get <SYMBOL> <INDICATOR>)`
+
+GET also takes an optional _default_ _value_ as GETF does.
+
+CLHS says:  
+`(get <SYMBOL> <INDICATOR>) ≡ (getf (symbol-plist <SYMBOL>) <INDICATOR>)`
+
+To add or update a property:
+`(setf (get <SYMBOL> <INDICATOR>) <NEW-VAL>)`
+
+And a property can be removed with the function [REMPROP](https://www.lispworks.com/documentation/HyperSpec/Body/f_rempro.htm):  
+`(remprop <SYMBOL> <INDICATOR>)`
+
+If a property is being shadowed, REMPROP will only remove the first matching key/value from the
+plist. The function returns _false_ if no matching property exists.
+```
+(setf (get 'baz :a) 1)
+(setf (get 'baz :b) 2)
+(setf (get 'baz :c) 3)
+
+(symbol-plist 'baz) => (:C 3 :B 2 :A 1)
+
+(remprop 'baz :b) => (:B 2 :A 1)
+(symbol-plist 'baz) => (:C 3 :A 1)
+
+(remprop 'baz :d) => NIL
+```
+
+CLHS says:  
+`(remprop <SYMBOL> <INDICATOR>) ≡ (remf (symbol-plist <SYMBOL>) <INDICATOR>)`
+
+
+;;;
+;;;    GETF:REMF::GET:REMPROP
+;;;    (GET:GETF::REMPROP:REMF) ???
+;;;
+
 
 
