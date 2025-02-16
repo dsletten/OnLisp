@@ -10,7 +10,7 @@ data types, and one comes in two flavors. So there are four choices to consider.
 1. Association lists (alists or a-lists for short)  
    An association list is a linked-list based table of arbitrary keys and values.
    Elements of this list are key/value pair sublists:  
-   `'((john guitar) (paul bass) (george guitar) (ringo drums))`
+   `'((john . guitar) (paul . bass) (george . guitar) (ringo . drums))`
 
 2. General property lists (plists or p-lists)  
    A property list is another linked-list data structure, but the elements of such a list
@@ -39,7 +39,7 @@ data types, and one comes in two flavors. So there are four choices to consider.
 
     First, while a hashtable implementation of a dictionary is warranted for a large number of
     key/value pairs, an association list is actually a better choice for a smaller dictionary.
-    And alists have an even simpler literal representation: ((:a 1) (:b 2) (:c 3)). Moreover,
+    And alists have an even simpler literal representation: `((:a 1) (:b 2) (:c 3))`. Moreover,
     a dictionary large enough to justify a hashtable would not be initialized by a literal value
     embedded in source code. The values would come from a file or database. This is the same in
     Common Lisp as with any other language.
@@ -63,10 +63,11 @@ Four main operations are possible with a dictionary/table:
 4. Remove an entry from the table. The given key no longer has a value associated with it.
 
 It's not surprising that these operations correlate to the fundamental actions on a table in a
-relational database (CRUD): Create, Read, Update, Delete
-[or (CRAP): Create, Replicate, Append, Process
-    (DAVE): Delete, Add, View, Edit
-    https://en.wikipedia.org/wiki/Create,_read,_update_and_delete]
+relational database
+[(CRUD)](https://en.wikipedia.org/wiki/Create,_read,_update_and_delete): Create, Read, Update, Delete  
+or  
+(CRAP): Create, Replicate, Append, Process  
+(DAVE): Delete, Add, View, Edit  
 
 Another similar set of actions supports RESTful API's (HTTP verbs).
 [Your mileage may vary](https://softwareengineering.stackexchange.com/questions/120716/difference-between-rest-and-crud]) on _how_ similar they are.
@@ -85,7 +86,7 @@ below:
 
 ## Association Lists
 
-CLHS §14.1.2.1 ["Lists as Association Lists"](https://www.lispworks.com/documentation/HyperSpec/Body/14_aba.htm) defines an alist as:
+CLHS §14.1.2.1 ["Lists as Association Lists"](https://www.lispworks.com/documentation/HyperSpec/Body/14_aba.htm) defines an alist:
 > An association list is a list of conses representing an association  
 > of keys with values, where the car of each cons is the key  
 > and the cdr is the value associated with that key.  
@@ -94,15 +95,15 @@ An association list in common usage can be a bit broader than this orthodox desc
 is a list of entries of the form `(<KEY> . <VALUE>)` or perhaps `(<KEY> <VALUE>)`. In other words,
 each top-level element of the alist is either a CONS whose CAR is the key and whose CDR is the
 value (dotted pairs), or it is a two-element list whose FIRST is the key and whose SECOND is
-the value:
-`((apple . red) (banana . yellow) (orange . orange))`
-vs.
+the value:  
+`((apple . red) (banana . yellow) (orange . orange))`  
+vs.  
 `((apple red) (banana yellow) (orange orange))`
 
 These distinctions may be blurred in the case where the value of the entry is itself a list.
 Consider an entry relating BOB with a list of his children, namely his sole daughter, MARY.
-This would be represented as (BOB . (MARY)). However, this dotted pair would ordinarily be
-printed as (BOB MARY). In this case, the CDR of the entry would be considered the value: (MARY),
+This would be represented as `(BOB . (MARY))`. However, this dotted pair would ordinarily be
+printed as `(BOB MARY)`. In this case, the CDR of the entry would be considered the value: `(MARY)`,
 rather than the SECOND: MARY.
 
 Suppose we have the following table:
@@ -142,38 +143,38 @@ Alternatively:
 The first version requires less memory (fewer CONS cells). The second is perhaps easier to read.
 
 Of course, the order of the entries is irrelevant. It is the specific ordered key/value pairs
-that define the table. This alist is equivalent to the first above: ((b . 2) (a . 1) (c . 3))
+that define the table. This alist is equivalent to the first above: `((b . 2) (a . 1) (c . 3))`
 
 (This does become an issue later when we consider shadowing.)
 
-Rather than encoding the alist literally, we can use the function PAIRLIS to establish the
+Rather than encoding the alist literally, we can use the function [PAIRLIS](https://www.lispworks.com/documentation/HyperSpec/Body/f_pairli.htm) to establish the
 correspondence between a list of keys and a list of values:  
-(pairlis '(a b c) '(1 2 3)) => ((C . 3) (B . 2) (A . 1))
+`(pairlis '(a b c) '(1 2 3)) => ((C . 3) (B . 2) (A . 1))`
 
-Note that PAIRLIS builds alists of dotted pairs: (<KEY> . <VALUE>). If you _really_ have to
+Note that PAIRLIS builds alists of dotted pairs: `(<KEY> . <VALUE>)`. If you _really_ have to
 have entries that are proper lists instead:  
-(pairlis '(a b c) (mapcar #'list '(1 2 3))) => ((C 3) (B 2) (A 1))
+`(pairlis '(a b c) (mapcar #'list '(1 2 3))) => ((C 3) (B 2) (A 1))`
 
 On the other hand, the alist can be built incrementally by adding individual entries. The
-function ACONS takes an alist (possibly empty) and conses a new entry at the head. As always,
+function [ACONS](https://www.lispworks.com/documentation/HyperSpec/Body/f_acons.htm) takes an alist (possibly empty) and conses a new entry at the head. As always,
 CONSing yields a new structure. The original is not modified.
 
 From scratch:  
-(acons 'c 3 (acons 'b 2 (acons 'a 1 '()))) => ((C . 3) (B . 2) (A . 1))
+`(acons 'c 3 (acons 'b 2 (acons 'a 1 '()))) => ((C . 3) (B . 2) (A . 1))`
 
 Add to an existing alist:  
-(defvar *table1* (pairlis '(a b c) '(1 2 3)))
-(acons 'd 4 *table1*) => ((D . 4) (C . 3) (B . 2) (A . 1))
+`(defvar *table1* (pairlis '(a b c) '(1 2 3)))`
+`(acons 'd 4 *table1*) => ((D . 4) (C . 3) (B . 2) (A . 1))`
 
-The value of a key is retrieved by the function ASSOC, which actually returns the entire entry
+The value of a key is retrieved by the function [ASSOC](https://www.lispworks.com/documentation/HyperSpec/Body/f_assocc.htm), which actually returns the entire entry
 for the key:  
-(assoc 'b *table1*) => (B . 2)
+`(assoc 'b *table1*) => (B . 2)`
 The function CDR/REST (or SECOND) would then be used to extract the value from the entry as
 appropriate.
 
-CLHS [https://www.lispworks.com/documentation/HyperSpec/Body/f_assocc.htm]
-illustrates the relationship between ASSOC and the general-purpose sequence function FIND:  
-(assoc <ITEM> <ALIST> :test <FN>) ≡ (find <ITEM> <ALIST> :test <FN> :key #'car)
+CLHS illustrates the relationship between ASSOC and the general-purpose sequence function
+FIND:  
+`(assoc <ITEM> <ALIST> :test <FN>) ≡ (find <ITEM> <ALIST> :test <FN> :key #'car)`
 
 This is true except in the case where <ITEM> is NIL.
 
@@ -184,9 +185,9 @@ There are two different ways to think about updating an entry (associating a new
 given key). Because the lookup mechanism for ASSOC proceeds from the head of the alist and stops
 as soon as it locates an entry with a matching key, we can shadow an existing entry simply by
 adding a new entry with the same key to the head of the alist:  
-(assoc 'c *table1*) => (C . 3)
-(acons 'c 99 *table1*) => ((C . 99) (C . 3) (B . 2) (A . 1))
-(assoc 'c (acons 'c 99 *table1*)) => (C . 99)
+`(assoc 'c *table1*) => (C . 3)`
+`(acons 'c 99 *table1*) => ((C . 99) (C . 3) (B . 2) (A . 1))`
+`(assoc 'c (acons 'c 99 *table1*)) => (C . 99)`
 
 This way of updating the alist allows a temporary change without destructively modifying the
 alist that can easily be restored in a different context. For example, a function may CONS new
@@ -217,11 +218,11 @@ An alternative way to shadow would be to PUSH an entry directly onto the front o
   (push (cons key new-value) alist)
   ...)
 ```
-In fact, one way to circumvent shadowing would be to use PUSHNEW to detect an existing key:  
-(pushnew (cons k v) alist :key #'first) ; Possibly :TEST too
+In fact, one way to circumvent shadowing would be to use [PUSHNEW](https://www.lispworks.com/documentation/HyperSpec/Body/m_pshnew.htm) to detect an existing key:  
+`(pushnew (cons k v) alist :key #'first)` ; Possibly :TEST too
 
-(push (cons 'b 12) *table1*) => ((B . 12) (C . 3) (B . 2) (A . 1))
-(pushnew (cons 'b 12) *table1* :key #'first) => ((C . 3) (B . 2) (A . 1))
+`(push (cons 'b 12) *table1*) => ((B . 12) (C . 3) (B . 2) (A . 1))`
+`(pushnew (cons 'b 12) *table1* :key #'first) => ((C . 3) (B . 2) (A . 1))`
 
 In the second case, PUSHNEW declines to add a new entry since an entry for B was already
 present.
@@ -230,27 +231,26 @@ In other cases, we may actually want a permanent update to the table. Using SETF
 ASSOC will destructively modify the alist entry replacing the old value with the new. Since the
 alist retains a reference to the entry, the alist is indirectly changed as well.
 
-However, we cannot use (SETF ASSOC) directly:
-(setf (assoc 'a *table1*) 5) =>
-  The function (SETF ASSOC) is undefined.
+However, we cannot use (SETF ASSOC) directly:  
+`(setf (assoc 'a *table1*) 5) =>
+  The function (SETF ASSOC) is undefined.`
 
-We must choose the correct value accessor (CDR/SECOND) depending on the type of the alist:
-(setf (cdr (assoc 'a *table1*)) 5)
-*table1* => ((C . 3) (B . 2) (A . 5))
+We must choose the correct value accessor (CDR/SECOND) depending on the type of the alist:  
+`(setf (cdr (assoc 'a *table1*)) 5)`
+`*table1* => ((C . 3) (B . 2) (A . 5))`
 
-CLHS [https://www.lispworks.com/documentation/HyperSpec/Body/f_assocc.htm]
-also mentions using the old school RPLACD function:
-(rplacd (assoc 'b *table1*) 7)
-*table1* => ((C . 3) (B . 7) (A . 5))
+CLHS also mentions using the old school [RPLACD](https://www.lispworks.com/documentation/HyperSpec/Body/f_rplaca.htm) function:  
+`(rplacd (assoc 'b *table1*) 7)`
+`*table1* => ((C . 3) (B . 7) (A . 5))`
 
-Alternatively, NSUBSTITUTE (the destructive version of SUBSTITUTE) could be used:
-(nsubstitute (cons 'b 12) 'b *table1* :key #'car)
-*table1* => ((C . 3) (B . 12) (A . 5))
+Alternatively, [NSUBSTITUTE](https://www.lispworks.com/documentation/HyperSpec/Body/f_sbs_s.htm) (the destructive version of SUBSTITUTE) could be used:  
+`(nsubstitute (cons 'b 12) 'b *table1* :key #'car)`
+`*table1* => ((C . 3) (B . 12) (A . 5))`
 
-For that matter, it is possible to nondestructively update an alist with SUBSTITUTE as an
-alternative to shadowing:
-(substitute (cons 'b 18) 'b *table1* :key #'car) => ((C . 3) (B . 18) (A . 5))
-*table1* => ((C . 3) (B . 12) (A . 5))
+For that matter, it is possible to nondestructively update an alist with [SUBSTITUTE](https://www.lispworks.com/documentation/HyperSpec/Body/f_sbs_s.htm) as an
+alternative to shadowing:  
+`(substitute (cons 'b 18) 'b *table1* :key #'car) => ((C . 3) (B . 18) (A . 5))`
+`*table1* => ((C . 3) (B . 12) (A . 5))`
 
 However, these non-shadowing approaches only work when truly _updating_ an entry. The entry
 must already exist for the key (i.e., the result of calling ASSOC is not NIL). There has to be
@@ -261,111 +261,115 @@ different mechanisms for adding/updating entries.)
 Shadowing works whether or not the table already contains an entry for the key. Obviously no
 _shadowing_ actually takes place for a new key.
 
-Finally, an entry can be removed (or destructively deleted):
-(remove 'b *table1* :key #'car) => ((C . 3) (A . 5))
-*table1* => ((C . 3) (B . 12) (A . 5))
+Finally, an entry can be removed (or destructively deleted):  
+`(remove 'b *table1* :key #'car) => ((C . 3) (A . 5))`
+`*table1* => ((C . 3) (B . 12) (A . 5))`
 
-Be aware that this will remove all matching entries, undoing any shadowing:
-(acons 'b 19 *table1*) => ((B . 19) (C . 3) (B . 12) (A . 5))
-(remove 'b (acons 'b 19 *table1*) :key #'car) => ((C . 3) (A . 5))
+Be aware that this will remove all matching entries, undoing any shadowing:  
+`(acons 'b 19 *table1*) => ((B . 19) (C . 3) (B . 12) (A . 5))`
+`(remove 'b (acons 'b 19 *table1*) :key #'car) => ((C . 3) (A . 5))`
 
-This can be controlled either by passing a :COUNT argument to REMOVE:
-(remove 'b (acons 'b 19 *table1*) :key #'car :count 1) => ((C . 3) (B . 12) (A . 5))
+This can be controlled either by passing a :COUNT argument to REMOVE:  
+`(remove 'b (acons 'b 19 *table1*) :key #'car :count 1) => ((C . 3) (B . 12) (A . 5))`  
 (This effectively "unshadows" the key B)
 
 or by removing more selectively:
+```
 (let ((table (acons 'b 19 *table1*)))
   (remove (assoc 'b table) table))
 ((C . 3) (B . 12) (A . 5))
+```
 
 Here, ASSOC explicitly locates the first entry for removal.
 
-Destructive DELETE:
-(delete 'b *table1* :key #'car) => ((C . 3) (A . 5))
-*table1* => ((C . 3) (A . 5))
+Destructive DELETE:  
+`(delete 'b *table1* :key #'car) => ((C . 3) (A . 5))`  
+`*table1* => ((C . 3) (A . 5))`
 
-Common Lisp also provides the function ASSOC-IF/ASSOC-IF-NOT to tailor how an entry is
+Common Lisp also provides the functions [ASSOC-IF/ASSOC-IF-NOT](https://www.lispworks.com/documentation/HyperSpec/Body/f_assocc.htm) to tailor how an entry is
 retrieved or modified.
 
 In addition to the basic table operations, an association list can also be treated as an
 invertible function, mapping from the values to the keys. Entries can be looked up using the
-corresponding RASSOC/RASSOC-IF/RASSOC-IF-NOT functions:
-(defvar *table2* '((apple . red) (banana . yellow) (orange . orange)))
-(rassoc 'red *table2*) => (APPLE . RED)
-(rassoc 'yellow *table2*) => (BANANA . YELLOW)
-(rassoc 'orange *table2*) => (ORANGE . ORANGE)
+corresponding [RASSOC/RASSOC-IF/RASSOC-IF-NOT](https://www.lispworks.com/documentation/HyperSpec/Body/f_rassoc.htm) functions:  
+`(defvar *table2* '((apple . red) (banana . yellow) (orange . orange)))`  
+`(rassoc 'red *table2*) => (APPLE . RED)`  
+`(rassoc 'yellow *table2*) => (BANANA . YELLOW)`  
+`(rassoc 'orange *table2*) => (ORANGE . ORANGE)`  
 
 However, despite the implication of a `reverse' association, these functions still search from
 the head of the alist--the ordered pairs are considered to be reversed. Thus, the first entry
-whose _value_ matches is returned:
-(rassoc 1 '((d . 1) (c . 1) (b . 2) (a . 1))) => (D . 1)
+whose _value_ matches is returned:  
+`(rassoc 1 '((d . 1) (c . 1) (b . 2) (a . 1))) => (D . 1)`
 
 This may produce unexpected results for a function such as this that is _not_ _actually_
 _invertible_ (since it is not injective).
 
 And, as expected, the call needs to be adapted for an alist with entries that are proper lists.
 Since RASSOC is already examining the CDR of each entry, the :KEY needs to be #'CAR in order to
-access the second element (CADR) of each entry:
-(rassoc 1 '((d 1) (c 1) (b 2) (a 1)) :key #'car) => (D 1)
+access the second element (CADR) of each entry:  
+`(rassoc 1 '((d 1) (c 1) (b 2) (a 1)) :key #'car) => (D 1)`
 
-As with ASSOC, CLHS [https://www.lispworks.com/documentation/HyperSpec/Body/f_rassoc.htm]
-highlights this relationship between RASSOC and FIND:
-(rassoc <ITEM> <ALIST> :test <FN>) ≡ (find <ITEM> <ALIST> :test <FN> :key #'cdr)
+As with ASSOC, CLHS highlights this relationship between RASSOC and FIND:  
+`(rassoc <ITEM> <ALIST> :test <FN>) ≡ (find <ITEM> <ALIST> :test <FN> :key #'cdr)`
 
-There is also a function COPY-ALIST to copy the deeper structure of an alist (vs. shallow
+There is also a function [COPY-ALIST](https://www.lispworks.com/documentation/HyperSpec/Body/f_cp_ali.htm) to copy the deeper structure of an alist (vs. shallow
 copy: COPY-LIST).
 
 Example:
+```
 (let* ((a (pairlis '(a b c) '(1 2 3)))
        (b (copy-list a))
        (c (copy-alist a)))
 ...)
-
-```
-Alist A:
-   [*|*]------->[*|*]------->[*|*]--->NIL
-    |            |            |
-    v            v            v
- +>[*|*]--->3 +>[*|*]--->2 +>[*|*]--->1
- |  |         |  |         |  |
- |  v         |  v         |  v
- |  C         |  B         |  A
- |            |            |
-[*|*]------->[*|*]------->[*|*]--->NIL
-Alist B:
 ```
 
+```
+   Alist A: [*|*]------->[*|*]------->[*|*]--->NIL
+              |            |            |          
+              v            v            v          
+           +>[*|*]--->3 +>[*|*]--->2 +>[*|*]--->1  
+           |  |         |  |         |  |          
+           |  v         |  v         |  v          
+           |  C         |  B         |  A          
+           |            |            |             
+Alist B: [*|*]------->[*|*]------->[*|*]--->NIL   
+```
+
 
 ```
-Alist C:
-[*|*]------->[*|*]------->[*|*]--->NIL
- |            |            |
- v            v            v
-[*|*]--->3   [*|*]--->2  [*|*]--->1
- |            |            |
- v            v            v
- C            B            A
+Alist C: [*|*]------->[*|*]------->[*|*]--->NIL
+          |            |            |          
+          v            v            v          
+         [*|*]--->3   [*|*]--->2  [*|*]--->1   
+          |            |            |          
+          v            v            v          
+          C            B            A          
 ```
 
-Finally, David Touretzky's book _Common LISP: A Gentle Introduction to Symbolic Computation_
+Finally, David Touretzky's book [Common LISP: A Gentle Introduction to Symbolic Computation](
+)
 (pg. 337) addresses renaming a key in an alist:
+```
 (defun rename-key (new old table)
   (setf (car (assoc old table)) new))
-
+```
 This can also be accomplished non-destructively:
+```
 (defun rename-key (new old table)
   (let ((entry (assoc old table)))
     (acons new (cdr entry) (remove entry table))))
-
+```
 And on pg. 338 he discusses adding to an existing value as opposed to replacing it:
+```
 (defun add (obj prop table)
   (nconc (assoc obj table) (list prop)))
-
+```
 or
-
+```
 (defun add (key prop table)
   (push prop (rest (assoc key table))))
-
+```
 
 
 ## Property Lists
