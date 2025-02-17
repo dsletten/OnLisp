@@ -481,7 +481,7 @@ NIL
 ```
 
 Just like the general plists above, a symbol's property list is simply a list:  
-`(listp (symbol-plist 'pung)) => T`
+`(listp (symbol-plist 'pung)) => T`  
 and it can be abused, for example, storing an odd number of elements:
 ```
 (push 'foo (symbol-plist 'pung))
@@ -490,11 +490,11 @@ and it can be abused, for example, storing an odd number of elements:
 However, the plist should normally hold an even number of elements (key/value pairs) as with
 any property list.
 
-A symbol's entire property list can be assigned by use of SETF with SYMBOL-PLIST:
+A symbol's entire property list can be assigned by use of SETF with SYMBOL-PLIST:  
 `(setf (symbol-plist 'pung) (list :foo 1 :bar 9))`  
-But CLHS discourages this:   
+But [CLHS](https://www.lispworks.com/documentation/HyperSpec/Body/f_symb_4.htm) discourages this:   
 > The use of _setf_ should be avoided, since a symbol's property list is a global resource  
-> that can contain information established and depended upon by unrelated programs in
+> that can contain information established and depended upon by unrelated programs in  
 > the same Lisp image.  
 
 A symbol's plist could be manipulated by means of the property list functions already introduced (GETF, REMF): `(getf (symbol-plist 'pung) 'foo)`. But Common Lisp provides a second group of
@@ -508,10 +508,10 @@ GET also takes an optional _default_ _value_ as GETF does.
 CLHS says:  
 `(get <SYMBOL> <INDICATOR>) ≡ (getf (symbol-plist <SYMBOL>) <INDICATOR>)`
 
-To add or update a property:
+To add or update a property:  
 `(setf (get <SYMBOL> <INDICATOR>) <NEW-VAL>)`
 
-And a property can be removed with the function [REMPROP](https://www.lispworks.com/documentation/HyperSpec/Body/f_rempro.htm):  
+And a property can be removed (destructively) with the function [REMPROP](https://www.lispworks.com/documentation/HyperSpec/Body/f_rempro.htm):  
 `(remprop <SYMBOL> <INDICATOR>)`
 
 If a property is being shadowed, REMPROP will only remove the first matching key/value from the
@@ -532,11 +532,70 @@ plist. The function returns _false_ if no matching property exists.
 CLHS says:  
 `(remprop <SYMBOL> <INDICATOR>) ≡ (remf (symbol-plist <SYMBOL>) <INDICATOR>)`
 
+The following analogies among the property list functions:  
+`GETF:REMF::GET:REMPROP`
+or  
+`GET:GETF::REMPROP:REMF`
 
-;;;
-;;;    GETF:REMF::GET:REMPROP
-;;;    (GET:GETF::REMPROP:REMF) ???
-;;;
+The use of symbol property lists is perhaps a bit archaic. They used to play an important role
+in defining relationships among symbols in older (particularly pre-OO) Lisps. But they present
+a number of difficulties.
+
+One concern is the global visibility of symbols (packages offer only limited protection).
+Consequently, properties can be modified by any part of a program which may lead to collisions.
+With this in mind, CLHS cautions against using SETF to assign the value of a symbol plist
+outright (as opposed to updating particular properties) as assigning an entirely new property
+list could annihilate properties used by other code.
+
+Despite the fact that symbol property lists are structurally the same as general property lists,
+they are really different animals. A non-symbol plist is effectively just a different
+implementation of an alist. The interface is slightly different, and some of the features are
+missing (arbitrary keys, RASSOC, etc...). But just like an alist it is a standalone table backed
+by a linked-list data structure.
+
+On the other hand, a set of symbol plists establishes a sort of _distributed_ _table_. Locating
+each plist itself requires looking up a symbol in a symbol table (package), and then the
+desired property is located in what is presumably a relatively short list of properties. This
+is apparently one of the reasons why Lisp programmers turned to symbol plists in the early days.
+Rather than consolidating everything in a single alist which would be slow to access, rely on
+the relatively quick lookup in symbol tables and keep the plists short--nested tables of tables
+rather than a long flat list.
+
+Peter Norvig discusses a table of U.S. state name abbreviations implemented in this
+way on pages 74-75 of his book [PAIP](https://github.com/norvig/paip-lisp):  
+`(setf (get 'al 'state) 'alabama)`  
+`(setf (get 'ak 'state) 'alaska)`  
+`(setf (get 'az 'state) 'arizona)`  
+`(setf (get 'ar 'state) 'arkansas)`  
+
+Here each "row" of the table is stored in a different symbol plist:  
+`(get 'ak 'state) => ALASKA`  
+`(get 'tx 'state) => NIL`
+
+Norvig acknowledges the history of using property lists in Lisp but states that their use is
+waning in part due to more efficient alternatives such as hash tables in Common Lisp. Moreover,
+the earlier style of modeling objects by means of symbols with properties attached to them has
+been supplanted by object-oriented programming using CLOS. Robert Wilensky discusses early AI
+research that sought to model properties of real world objects by means of Lisp properties in
+section 7.4 of his book [Common LISPcraft](https://www2.eecs.berkeley.edu/Faculty/Homepages/wilensky.html) (Wilensky was Norvig's doctoral advisor.). A symbol could be viewed as a rudimentary
+(pre-OO) object:
+
+- Properties represent slots
+- Properties also hold type and inheritance (is-a) information
+
+Many authors emphasize the downsides of using symbol plists:
+
+- They are global. Any part of a running program can attempt to store and rely on properties
+  tied to particular symbols. If different program units have different uses for a property
+  or compete in maintaining its state, collisions can occur. This problem can be (partially)
+  mitigated by disciplined use of separate packages.
+- The distributed nature of the table reified by a group of symbol plists makes it hard to
+  coordinate. For example, a symbol cannot easily be removed universally from all related plits.
+  Consider the difficulty in removing the STATE property from each of the symbols above.
+- Properties are severely limited to the use of symbols as indicators.  
+
+
+## Hash Tables
 
 
 
