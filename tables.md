@@ -533,7 +533,7 @@ CLHS says:
 `(remprop <SYMBOL> <INDICATOR>) ≡ (remf (symbol-plist <SYMBOL>) <INDICATOR>)`
 
 The following analogies among the property list functions:  
-`GETF:REMF::GET:REMPROP`
+`GETF:REMF::GET:REMPROP`  
 or  
 `GET:GETF::REMPROP:REMF`
 
@@ -597,5 +597,83 @@ Many authors emphasize the downsides of using symbol plists:
 
 ## Hash Tables
 
+The final table option is the most heavyweight. Hash tables provide more efficient random access
+than the other linear structures particularly when a large number of entries is involved. But
+they lack a built-in printable representation, so small dictionaries are more conveniently
+implemented with association lists or property lists. Furthermore, below a certain size
+threshold, the more primitive dictionaries may even be more efficient. (They will certainly
+consume less memory.)
+
+A hash table is created by means of the function [MAKE-HASH-TABLE](https://www.lispworks.com/documentation/HyperSpec/Body/f_mk_has.htm), which takes an optional `:TEST` argument that specifies
+which function will be used to compare keys:
+
+- EQ
+- EQL (Default)
+- EQUAL
+- EQUALP
+
+As CLHS explains:
+> An object is said to be present in the hash-table if that object is the same under the test as the key for some entry in the hash-table.
+
+For example, an EQL test would be too specific for a hash table with string keys:  
+`(eql "foo" "foo") => NIL`  
+An entry might be added using one string as the key and might be unretrievable if a different
+instance of that string were used to look up that entry. Instead, such a hash table would need
+to use the test EQUAL:  
+`(equal "foo" "foo") => T`  
+Moreover, a hash table using EQUALP could use string keys in a case-insensitive manner:  
+`(equalp "FOO" "foo") => T`
+
+Entries have to be added individually as there is no PAIRLIS function for hash tables. An entry
+is added by calling SETF with the accessor function [GETHASH](https://www.lispworks.com/documentation/HyperSpec/Body/f_gethas.htm):  
+```
+(defvar *h* (make-hash-table :test #'equal))
+(setf (gethash "pung" *h*) pi)
+(setf (gethash "foo" *h*) 'bar)
+```
+As a reader, GETHASH retrieves the value associated with a key or NIL. It also returns a
+_secondary_ _value_ that indicates whether or not the key is present. This clarifies whether a
+NIL primary value is the actual value or simply indicates a missing key. GETHASH also accepts
+an optional default value:  
+```
+(gethash "foo" *h*) => BAR; T
+(gethash "bar" *h*) => NIL; NIL
+(gethash "bar" *h* 'sure-why-not) => SURE-WHY-NOT; NIL
+```
+There can only be one entry for a given key, so no shadowing takes place. In other words,
+updating is the same operation as creating an entry and is always destructive.
+
+
+
+
+
+When a gethash form is used as a setf place, any default which is supplied is evaluated according to normal left-to-right evaluation rules, but its value is ignored. 
+
+(defmacro how-many (obj) `(values (gethash ,obj *counters* 0))) =>  HOW-MANY
+ (defun count-it (obj) (incf (how-many obj))) =>  COUNT-IT
+
+553
+
+
+
+
+
+[HASH-TABLE-COUNT](https://www.lispworks.com/documentation/HyperSpec/Body/f_hash_1.htm)
+
+(hash-table-count table) == 
+ (loop for value being the hash-values of table count t) == 
+ (let ((total 0))
+   (maphash #'(lambda (key value)
+                (declare (ignore key value))
+                (incf total))
+            table)
+   total)
+
+
+(defun rename-key (new old h)
+  (setf (gethash new h) (gethash old h))
+  (remhash old h))
+
+[SXHASH](https://www.lispworks.com/documentation/HyperSpec/Body/f_sxhash.htm)
 
 
