@@ -537,6 +537,20 @@ The following analogies among the property list functions:
 or  
 `GET:GETF::REMPROP:REMF`
 
+Some Common Lisp implementations will use symbol property lists for internal purposes. For
+example, in ABCL or CLISP, defining a function causes some info to be stored on the plist of
+the symbol naming the function:
+```
+(defun foo (x) (+ x 9))
+
+(symbol-plist 'foo) =>
+(SYSTEM::DEFINITION
+ ((DEFUN FOO (X) (+ X 9)) .
+  #(NIL NIL NIL NIL
+    ((DECLARATION OPTIMIZE DECLARATION DYNAMICALLY-MODIFIABLE
+      SYSTEM::IMPLEMENTATION-DEPENDENT)))))
+```
+
 The use of symbol property lists is perhaps a bit archaic. They used to play an important role
 in defining relationships among symbols in older (particularly pre-OO) Lisps. But they present
 a number of difficulties.
@@ -643,37 +657,123 @@ an optional default value:
 There can only be one entry for a given key, so no shadowing takes place. In other words,
 updating is the same operation as creating an entry and is always destructive.
 
+CLHS points out:  
+> When a gethash form is used as a setf _place_, any _default_ which is supplied is evaluated according to normal left-to-right evaluation rules, but its value is ignored. 
 
+However, this is not the case for other macros which can be useful for initializing a hash table
+entry. Consider the problem of counting the letters in a string. A conventional approach would
+have to guard against missing keys:  
+```
+(defun count-it (h ch)
+  (let ((count (or (gethash ch h) 0)))
+    (setf (gethash ch h) (1+ count))))
+```
 
+Instead, we can write:  
+```
+(defun count-it (h ch)
+  (incf (gethash ch h 0)))
+```
 
+This example can also highlight the difference between :TEST functions in the hash table:  
+```
+(defvar *h1* (make-hash-table)) ; Default #'EQL
+(defvar *h2* (make-hash-table :test #'equalp))
 
-When a gethash form is used as a setf place, any default which is supplied is evaluated according to normal left-to-right evaluation rules, but its value is ignored. 
+(count-it *h1* #\j) => 1
+(count-it *h1* #\J) => 1
 
-(defmacro how-many (obj) `(values (gethash ,obj *counters* 0))) =>  HOW-MANY
- (defun count-it (obj) (incf (how-many obj))) =>  COUNT-IT
+(count-it *h2* #\j) => 1
+(count-it *h2* #\J) => 2
 
-553
+(eql #\j #\J) => NIL
+(equalp #\j #\J) => T
+```
 
+`*H1*` views `#\j` and `#\J` as distinct keys, whereas `*H2*` interprets them as being the same.
 
+Such default values are not as tightly bound to the hash table as they are, say in Ruby:
+```
+h = {:foo => 1, :bar => 2}
+h.default = 0
 
+h[:foo] => 1
+h[:baz] => 0
+```
 
+In Lisp, we still have to explicitly provide the default:
+```
+(gethash #\z *h1*) => NIL; NIL
+(gethash #\z *h1* 0) => 0; NIL
+```
 
-[HASH-TABLE-COUNT](https://www.lispworks.com/documentation/HyperSpec/Body/f_hash_1.htm)
+(Although there are [issues](https://medium.com/klaxit-techblog/a-headache-in-ruby-hash-default-values-bf2706660392) with Ruby's approach too.)
 
-(hash-table-count table) == 
- (loop for value being the hash-values of table count t) == 
- (let ((total 0))
-   (maphash #'(lambda (key value)
-                (declare (ignore key value))
-                (incf total))
-            table)
-   total)
+The function [HASH-TABLE-COUNT](https://www.lispworks.com/documentation/HyperSpec/Body/f_hash_1.htm) indicates how many entries are present in a hash table. (Be careful, [HASH-TABLE-SIZE](https://www.lispworks.com/documentation/HyperSpec/Body/f_hash_4.htm) is something else.).
 
+CLHS shows the following equivalence:  
+```
+(hash-table-count table) ≡
 
+(loop for value being the hash-values of table count t) ≡
+
+(let ((total 0))
+  (maphash #'(lambda (key value)
+               (declare (ignore key value))
+               (incf total))
+           table)
+  total)
+```
+
+This snippet also references two ways to iterate over the entries of a hash table: LOOP and
+[MAPHASH](https://www.lispworks.com/documentation/HyperSpec/Body/f_maphas.htm). There is a third, more primitive macro [WITH-HASH-TABLE-ITERATOR](https://www.lispworks.com/documentation/HyperSpec/Body/m_w_hash.htm), which is beyond the scope of this discussion.
+
+CLHS illustrates a possible definition of MAPHASH in terms of WITH-HASH-TABLE-ITERATOR:
+```
+(defun maphash (function hash-table)
+   (with-hash-table-iterator (next-entry hash-table)
+     (loop (multiple-value-bind (more key value) (next-entry)
+             (unless more (return nil))
+             (funcall function key value)))))
+```
+
+Notice that this is a use of the "simple [LOOP](https://www.lispworks.com/documentation/HyperSpec/Body/m_loop.htm#loop)" macro.
+
+Peter Seibel puts it in perspective in a [footnote](https://gigamonkeys.com/book/collections):  
+> LOOP's hash table iteration is typically implemented on top of a more primitive form, WITH-HASH-TABLE-ITERATOR, that you don't need to worry about; it was added to the language specifically to support implementing things such as LOOP and is of little use unless you need to write completely new control constructs for iterating over hash tables.
+
+The simplest way (while verbose) to iterate over a hash table uses the "extended LOOP" macro.
+
+Loop over just keys or values:
+```
+(loop for k being the hash-keys in h ...)
+(loop for v being the hash-values in h ...)
+;;    Alternatives
+(loop for k being each hash-key of h ...)
+(loop for v being each hash-value of h ...)
+```
+
+Loop using both keys and values:
+```
+(loop for k being the hash-keys in h using (hash-value v) ...)
+(loop for v being the hash-values in h using (hash-key k) ...)
+```
+
+An entry can be removed from a hash table via the [REMHASH](https://www.lispworks.com/documentation/HyperSpec/Body/f_remhas.htm) function:  
+`(remhash "foo" *h*) => T`
+
+And [CLRHASH](https://www.lispworks.com/documentation/HyperSpec/Body/f_clrhas.htm) will remove all entries from the hash table.
+
+It is simple to define a function to "rename" an existing key:
+```
 (defun rename-key (new old h)
   (setf (gethash new h) (gethash old h))
   (remhash old h))
+```
 
-[SXHASH](https://www.lispworks.com/documentation/HyperSpec/Body/f_sxhash.htm)
+And while Common Lisp hash tables have a lot of built-in features, the language also provides the [SXHASH](https://www.lispworks.com/documentation/HyperSpec/Body/f_sxhash.htm) function to assist in implementing more advanced hash tables.
+
+As CLHS states:  
+> SXHASH is intended for use where the pre-defined abstractions are insufficient. Its main intent is to allow the user a convenient means of implementing more complicated hashing paradigms than are provided through hash tables.
 
 
