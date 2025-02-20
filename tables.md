@@ -532,7 +532,7 @@ plist. The function returns _false_ if no matching property exists.
 CLHS says:  
 `(remprop <SYMBOL> <INDICATOR>) ≡ (remf (symbol-plist <SYMBOL>) <INDICATOR>)`
 
-The following analogies among the property list functions:  
+The following analogies exist among the property list functions:  
 `GETF:REMF::GET:REMPROP`  
 or  
 `GET:GETF::REMPROP:REMF`
@@ -604,7 +604,7 @@ Many authors emphasize the downsides of using symbol plists:
   or compete in maintaining its state, collisions can occur. This problem can be (partially)
   mitigated by disciplined use of separate packages.
 - The distributed nature of the table reified by a group of symbol plists makes it hard to
-  coordinate. For example, a symbol cannot easily be removed universally from all related plits.
+  coordinate. For example, a property cannot easily be removed universally from all related plists.
   Consider the difficulty in removing the STATE property from each of the symbols above.
 - Properties are severely limited to the use of symbols as indicators.  
 
@@ -739,7 +739,7 @@ CLHS illustrates a possible definition of MAPHASH in terms of WITH-HASH-TABLE-IT
 
 Notice that this is a use of the "simple [LOOP](https://www.lispworks.com/documentation/HyperSpec/Body/m_loop.htm#loop)" macro.
 
-Peter Seibel puts it in perspective in a [footnote](https://gigamonkeys.com/book/collections):  
+Peter Seibel puts things in perspective in a [footnote](https://gigamonkeys.com/book/collections):  
 > LOOP's hash table iteration is typically implemented on top of a more primitive form, WITH-HASH-TABLE-ITERATOR, that you don't need to worry about; it was added to the language specifically to support implementing things such as LOOP and is of little use unless you need to write completely new control constructs for iterating over hash tables.
 
 The simplest way (while verbose) to iterate over a hash table uses the "extended LOOP" macro.
