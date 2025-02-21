@@ -12,7 +12,7 @@ data types, and one comes in two flavors. So there are four choices to consider.
    Elements of this list are key/value pair sublists:  
    `'((john . guitar) (paul . bass) (george . guitar) (ringo . drums))`
 
-2. General property lists (plists or p-lists)  
+2. General [property lists](https://www.cs.cmu.edu/Groups/AI/html/cltl/clm/node108.html) (plists or p-lists)  
    A property list is another linked-list data structure, but the elements of such a list
    are the alternating keys and values themselves as though an association list has had its
    nested structure flattened:  
