@@ -31,21 +31,21 @@ data types, and one comes in two flavors. So there are four choices to consider.
    symbol). Consequently they carry the risk of conflicts in modification as do all global
    mutable values.
 
-4. Hashtables  
-   Finally, Common Lisp provides built-in hashtable support. Hashtables furnish efficient
+4. Hash Tables  
+   Finally, Common Lisp provides built-in hash table support. Hash tables furnish efficient
    retrieval and update for large tables with many entries. While it's true that Common Lisp
-   does not define a convenient literal syntax for hashtables as some languages do (e.g., Ruby:
+   does not define a convenient literal syntax for hash tables as some languages do (e.g., Ruby:
    `{:a => 1, :b => 2, :c => 3}`), this is a somewhat spurious complaint for three reasons.
 
-    First, while a hashtable implementation of a dictionary is warranted for a large number of
+    First, while a hash table implementation of a dictionary is warranted for a large number of
     key/value pairs, an association list is actually a better choice for a smaller dictionary.
     And alists have an even simpler literal representation: `((:a 1) (:b 2) (:c 3))`. Moreover,
-    a dictionary large enough to justify a hashtable would not be initialized by a literal value
+    a dictionary large enough to justify a hash table would not be initialized by a literal value
     embedded in source code. The values would come from a file or database. This is the same in
     Common Lisp as with any other language.
 
     Second, if absolutely necessary, it is simple to define a reader macro to add new syntax to
-    Common Lisp to allow hashtable literals. One could adopt the syntax of Clojure maps, for
+    Common Lisp to allow hash table literals. One could adopt the syntax of Clojure maps, for
     example: `{"pung" 1 "foo" 2 "bar" 3}`
     (This still does not address the _printable_ representation as opposed to this _readable_
     representation.)
@@ -75,7 +75,7 @@ Another similar set of actions supports RESTful API's (HTTP verbs).
 Here is a comparison of similar ideas from SQL/REST and the Lisp table datatypes discussed
 below:
         
-|        |SQL      |REST       |Alist           |Plist         |Hashtable     |
+|        |SQL      |REST       |Alist           |Plist         |Hash Table     |
 | ------- | --------- | ----------- | ---------------- | -------------- | -------------- |
 |CREATE |insert   |POST (PUT) |ACONS           |(SETF GET(F)) |(SETF GETHASH)|
 |READ   |select   |GET        |ASSOC           |GET(F)        |GETHASH       |
