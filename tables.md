@@ -86,10 +86,8 @@ below:
 
 ## Association Lists
 
-CLHS §14.1.2.1 ["Lists as Association Lists"](https://www.lispworks.com/documentation/HyperSpec/Body/14_aba.htm) defines an alist:
-> An association list is a list of conses representing an association  
-> of keys with values, where the car of each cons is the key  
-> and the cdr is the value associated with that key.  
+CLHS ["Lists as Association Lists"](https://www.lispworks.com/documentation/HyperSpec/Body/14_aba.htm) defines an alist:
+> An association list is a list of conses representing an association of keys with values, where the car of each cons is the key and the cdr is the value associated with that key.  
 
 An association list in common usage can be a bit broader than this orthodox description. It
 is a list of entries of the form `(<KEY> . <VALUE>)` or perhaps `(<KEY> <VALUE>)`. In other words,
