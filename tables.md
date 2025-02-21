@@ -7,7 +7,7 @@ words; tables, as a table pairs the fields of a row with a primary key; or in ge
 which pair elements from one set with those of another. Common Lisp has three built-in table
 data types, and one comes in two flavors. So there are four choices to consider.
 
-1. Association lists (alists or a-lists for short)  
+1. [Association lists](https://en.wikipedia.org/wiki/Association_list) (alists or a-lists for short)  
    An association list is a linked-list based table of arbitrary keys and values.
    Elements of this list are key/value pair sublists:  
    `'((john . guitar) (paul . bass) (george . guitar) (ringo . drums))`
