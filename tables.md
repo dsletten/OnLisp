@@ -776,4 +776,9 @@ And while Common Lisp hash tables have a lot of built-in features, the language 
 As CLHS states:  
 > SXHASH is intended for use where the pre-defined abstractions are insufficient. Its main intent is to allow the user a convenient means of implementing more complicated hashing paradigms than are provided through hash tables.
 
+In summary, association lists provide the most flexibility in terms of keys, and a convenient
+syntax. They also perform adequately for small tables. Hash tables are more efficient for large
+tables but are less flexible and convenient. Property lists are the least flexible with regard
+to what keys may be used. And symbol property lists in particular have a number of drawbacks.
+The use of modern OO ideas is preferable to older uses of symbol plists to model hierarchies.
 
