@@ -179,6 +179,26 @@ This is true except in the case where `<ITEM>` is NIL.
 The default equality test for ASSOC to match a key to `<ITEM>` is EQL. Another function can be
 specified by the :TEST keyword, e.g., STRING-EQUAL for case-insensitive string keys.
 
+Here are a few possible definitions of the basic behavior of ASSOC:
+```
+(defun assoc (obj a-list)
+  (find-if #'(lambda (entry) (eql obj (first entry))) a-list))
+
+(defun assoc (obj a-list)
+  (if (endp a-list)
+      nil
+      (destructuring-bind (entry . more) a-list
+        (if (eql (first entry) obj)
+            entry
+            (assoc obj more)))) )
+
+(defun assoc (obj a-list)
+  (loop for cons on a-list
+        for entry = (first cons)
+        when (eql (first entry) obj)
+        return entry))
+```        
+
 There are two different ways to think about updating an entry (associating a new value with a
 given key). Because the lookup mechanism for ASSOC proceeds from the head of the alist and stops
 as soon as it locates an entry with a matching key, we can shadow an existing entry simply by
