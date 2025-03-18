@@ -364,4 +364,165 @@ Any number that has this pattern is a NaN value:
 (Double/longBitsToDouble (inc (Double/doubleToRawLongBits Double/NaN))) => ##NaN
 (Long/toHexString (Double/doubleToRawLongBits *1)) => "7ff8000000000001"
 So evidently there are 2^52 - 1 possible NaN values!
+================================================================================
+250310 月
+Common Lisp inconsistent or Java wrong??
 
+One of the places where Clojure's seams show the JVM underneath involves numerical operations.
+Clojure supports arbitrary-precision integers, but only in some places. For example, bit shifting operations
+only apply to Java Long instances:
+(bit-shift-left 1 1) => 2
+(bit-shift-left 1 2) => 4
+(bit-shift-left 1 62) => 4611686018427387904
+(bit-shift-left 1 63) => -9223372036854775808
+(== Long/MIN_VALUE (bit-shift-left 1 63)) => true
+
+Beyond that, the values wrap around:
+(bit-shift-left 1 64) => 1
+(bit-shift-left 1 65) => 2
+vs.
+(bit-shift-left (bit-shift-left 1 62) 1) => -9223372036854775808
+(bit-shift-left (bit-shift-left (bit-shift-left 1 62) 1) 1) => 0
+
+This odd wrapping behavior is consistent with Java:
+jshell> 1L << 62
+$58 ==> 4611686018427387904
+
+jshell> 1L << 63
+$59 ==> -9223372036854775808
+
+jshell> 1L << 64
+$60 ==> 1
+
+Note the explicit designation `1L' above. Java and Clojure differ with
+Java Integer values:
+1 << 30 => 1073741824
+1 << 31 => -2147483648
+1 << 33 => 2
+1 << 32 => 1
+(bit-shift-left (int 1) 30) => 1073741824
+(bit-shift-left (int 1) 31) => 2147483648
+(bit-shift-left (int 1) 32) => 4294967296
+(bit-shift-left (int 1) 33) => 8589934592
+
+Apparently `bit-shift-left' automatically promotes its first argument:
+(class (int 1)) => java.lang.Integer
+(class (bit-shift-left (int 1) 30)) => java.lang.Long
+(class (bit-shift-left (int 1) 31)) => java.lang.Long
+
+This wrapping behavior is baked into how the compiler handles the << operator:
+jshell> Long.MAX_VALUE << 62
+$62 ==> -4611686018427387904
+
+jshell> Long.MAX_VALUE << 63
+$63 ==> -9223372036854775808
+
+0111111111111111111111111111111111111111111111111111111111111111
+|
+|
+v
+1000000000000000000000000000000000000000000000000000000000000000 ; Almost gone...
+
+jshell> Long.MAX_VALUE << 64
+$64 ==> 9223372036854775807
+
+jshell> Long.MAX_VALUE << 63 << 1
+$65 ==> 0
+
+But what about floating-point values? A left shift is equivalent to multiplying by a power of 2.
+In other words, the significand of the floating-point number need not change:
+jshell> Long.toHexString(Double.doubleToRawLongBits(123))
+$80 ==> "405ec00000000000"
+
+jshell> Long.toHexString(Double.doubleToRawLongBits(123 << 3))
+$81 ==> "408ec00000000000"
+
+jshell> Long.toHexString(Double.doubleToRawLongBits(123 * Math.pow(2, 3)))
+$82 ==> "408ec00000000000"
+
+jshell> Long.toBinaryString(Double.doubleToRawLongBits(123))
+$75 ==> "100000001011110110000000000000000000000000000000000000000000000"
+                    ^
+jshell> Long.toBinaryString(Double.doubleToRawLongBits(123 << 3))
+$76 ==> "100000010001110110000000000000000000000000000000000000000000000"
+                    ^
+jshell> Long.toBinaryString(Double.doubleToRawLongBits(123 * Math.pow(2, 3)))
+$77 ==> "100000010001110110000000000000000000000000000000000000000000000"
+                    ^
+Now consider:
+(bit-shift-left 1 62) => 4611686018427387904
+(math/pow 2 62) => 4.611686018427388E18
+
+The equality of these 2 values appears to be a special case for powers of 2. The integer value
+merely shifts over the single 1 bit with many trailing 0s:
+100000000000000000000000000000000000000000000000000000000000000
+
+The double-precision float cannot represent all of those bits in its significand:
+0 10000111101 0000000000000000000000000000000000000000000000000000
+
+With the hidden bit, the significand is effectively
+10000000000000000000000000000000000000000000000000000 (double)
+vs.
+100000000000000000000000000000000000000000000000000000000000000 (long)
+
+So clearly these values are not equal in a strict sense.
+
+But if the "missing" bits were assumed to be present as 0s then the equality of the two values is understood:
+(== (bit-shift-left 1 62) (math/pow 2 62)) => true
+
+Common Lisp agrees:
+(= (ash 1 62) (expt 2d0 62)) => T
+
+The following example seems to fit the same pattern:
+(bit-shift-left 3 61)
+(* 3 (math/pow 2 61)))
+
+0 10000111101 1000000000000000000000000000000000000000000000000000
+
+Once again we have a couple of meaningful bits followed by lots of 0s.
+110000000000000000000000000000000000000000000000000000000000000 (long)
+vs. 
+11000000000000000000000000000000000000000000000000000 (double)
+
+However, what about this?
+(inc (bit-shift-left 3 61))
+(inc (* 3 (math/pow 2 61))))
+
+0 10000111101 1000000000000000000000000000000000000000000000000000
+
+110000000000000000000000000000000000000000000000000000000000001 (long)
+vs.
+1000000000000000000000000000000000000000000000000000
+
+The significand of the double value cannot represent the incremented bit.
+Clearly these are 2 different numbers.
+
+Clojure says that these 2 are equal (==):
+(== (inc (bit-shift-left 3 61)) (inc (* 3 (math/pow 2 61))))
+
+But Common Lisp disagrees:
+(= (ash 3 61) (* 3 (expt 2d0 61))) => T
+(= (1+ (ash 3 61)) (1+ (* 3 (expt 2d0 61)))) => NIL          甲
+
+Both Common Lisp and Java demonstrate that the increment has no impact on the float value:
+(integer-decode-float (* 3 (expt 2d0 61)))      => 6755399441055744; 10; 1
+(integer-decode-float (1+ (* 3 (expt 2d0 61)))) => 6755399441055744; 10; 1
+
+Double.doubleToRawLongBits(Math.pow(2, 61) * 3)     => 4888657395510673408
+Double.doubleToRawLongBits(Math.pow(2, 61) * 3 + 1) => 4888657395510673408
+(3l << 61) + 1 == Math.pow(2, 61) * 3 + 1 => true         !!!!
+
+So the integer value is correctly incremented while the bit is lost in the float.
+They clearly are not equal.
+
+But is Common Lisp inconsistent?
+(= (coerce (ash 3 61) 'double-float) (coerce (1+ (ash 3 61)) 'double-float)) => T
+
+This coercion must be how Common Lisp tests the equality (甲)????
+(= (coerce (1+ (ash 3 61)) 'double-float) (1+ (* 3 (expt 2d0 61)))) => T
+(eql (1+ (* 3 (expt 2d0 61))) (coerce (1+ (ash 3 61)) 'double-float)) => T
+
+(integer-decode-float (coerce (ash 3 61) 'double-float)) =>      6755399441055744; 10; 1
+(integer-decode-float (coerce (1+ (ash 3 61)) 'double-float)) => 6755399441055744; 10; 1
+
+(All implementations tested exhibit identical behavior: ABCL/CLISP/Clozure/CMUCL/SBCL)

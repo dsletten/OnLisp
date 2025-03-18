@@ -2577,6 +2577,8 @@ How to decide which "Lisp features" a program is lacking?
                       Smaller than     than a particular program
                       an application
 
+[Categorization of utility involves both size and generality.]
+
 Example:
 Reinventing the wheel
 - Special purpose solution created when existing general solution could handle
@@ -2674,6 +2676,10 @@ vs.
     (if (null entry)
         nil
         (copy-list (second entry)))) ) ; Defensive copy (consistent with Graham's oblique description.)
+
+Thus, 2 problems with ALL-NICKNAMES:
+• Wasted effort. MAPCAN already exists.
+• Obscurity. ALL-NICKNAMES is clearly a kind of mapping. Use normal idioms.
 ---------------------------------------------------------
 Above, MAPCAN is an existing and superior alternative to writing ALL-NICKNAMES from scratch.
 But what about the case where the alternative (i.e., MAPCAN) doesn't exist yet?
@@ -2682,7 +2688,7 @@ Example:
 (defvar *towns* (List of nearby towns sorted by increasing distance (from where?)))
 
 (defun bookshops (town)
-  ;; Returns list of all bookshops in the given TOWN
+  ;; Returns list of all bookshops in the given TOWN (if any).
   )
 
 (let ((town (find-if #'bookshops *towns*))) ; Find nearest (first) town in list with a bookshop, i.e., success means non-nil list of shops
@@ -2699,7 +2705,7 @@ Instead:
             (values (first towns) shops)
             (find-books (rest towns)))) ))
 
-But is there more general pattern here?
+But is there a more general pattern here?
 
 Eureka!
 What we want is a combination of FIND-IF/SOME:
@@ -2786,7 +2792,7 @@ Sidebar: compare SOME vs. FIND-IF
 
 
 SOME -> FIND-IF:
-(some f seq) -> (some #'(lambda (elt) (and (funcall f elt) elt)) seq)
+(some f seq) -> (some #'(lambda (elt) (and (funcall f elt) elt)) seq) ; Not identical for NIL element.
 ----------------------------------------------------------------------------
 240925 水
 Case study
@@ -2930,7 +2936,7 @@ For any elements a, b either:
 
 Three separate comparisons: <, >, =
 
-Instead given < function:
+Instead, simply given < function:
 1. a < b
 2. b < a
 3. Otherwise a and b are equal. Consequence of first two tests failing.
@@ -3073,7 +3079,12 @@ inefficient in base lang.
 
 (longerp (make-list 1000000) '(a b c)) !!
 
-Make the efficient approach as convenient/natural as the inefficient.
+Make the efficient approach as convenient/natural as the inefficient. See LONGERP below.
+
+Good utilities => Programming is easier
+               => Programs are better
+
+Writing a utility can highlight good places to use it!
 ----------------------------------------------------------------------------
 §4.3 Operations on Lists 240621 金
 
@@ -4927,12 +4938,41 @@ Oz closure examples:
 
 (loop for i from 1 to 20 do (format t "~A~%" (fizz-buzz i)))
 
-(defun fizz-buzz* (n)
-  (case (mod n 15)
-    (15 "fizzbuzz")
-    (3  "fizz")
-    (5  "buzz")
-    (otherwise n)))
+;;;
+;;;    Broken!
+;;;
+;; (defun fizz-buzz* (n)
+;;   (case (mod n 15)
+;;     (15 "fizzbuzz")
+;;     (3  "fizz")
+;;     (5  "buzz")
+;;     (otherwise n)))
+
+;; (defun fizz-buzz* (n)
+;;   (case (mod n 15)
+;;     (15 (fizz-buzz* 3) (fizz-buzz* 5))
+;;     (3  "fizz")
+;;     (5  "buzz")
+;;     (otherwise n)))
+
+(defun fizz-buzz (n)
+  (flet ((fizz () "fizz")
+         (buzz () "buzz"))
+    (case (mod n 3)
+      (0 (case (mod n 5)
+           (0 (concatenate 'string (fizz) (buzz)))
+           (otherwise (fizz))))
+      (otherwise (case (mod n 5)
+                   (0 (buzz))
+                   (otherwise n)))) ))
+
+(defun fizz-buzz (n)
+  (flet ((fizz () "fizz")
+         (buzz () "buzz"))
+    (cond ((zerop (mod n 15)) (concatenate 'string (fizz) (buzz)))
+          ((zerop (mod n 3)) (fizz))
+          ((zerop (mod n 5)) (buzz))
+          (t n))))
 
 (defun ordering (x y)
   (condp #'apply (list x y)
