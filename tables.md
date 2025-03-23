@@ -485,6 +485,27 @@ No analog to RASSOC exists for plists, but it could be defined:
   (getf (reverse plist) val))
 ```
 
+[Chapter 3](https://gigamonkeys.com/book/practical-a-simple-database) of Peter Seibel's book Practical Common Lisp utilizes property lists as a simple way of modeling Compact Discs in a database of music:  
+```
+(defun make-cd (title artist rating ripped)
+  (list :title title :artist artist :rating rating :ripped ripped))
+
+(make-cd "Roses" "Kathy Mattea" 7 t) => (:TITLE "Roses" :ARTIST "Kathy Mattea" :RATING 7 :RIPPED T) 
+```
+
+He then defines a function, SELECT, to retrieve database entries. Of course, this uses GETF behind the scenes:
+```
+(defun select (selector-fn)
+  (remove-if-not selector-fn *db*))
+
+(defun artist-selector (artist)
+  #'(lambda (cd) (equal (getf cd :artist) artist)))
+
+(select (artist-selector "Dixie Chicks"))
+((:TITLE "Home" :ARTIST "Dixie Chicks" :RATING 9 :RIPPED T)
+ (:TITLE "Fly" :ARTIST "Dixie Chicks" :RATING 8 :RIPPED T))
+```
+
 ## Symbol Property Lists
 
 The most common use of property lists (historically) was the plists that are automatically
