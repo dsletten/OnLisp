@@ -2791,6 +2791,9 @@ Sidebar: compare SOME vs. FIND-IF
   (traverse l fn #'identity))
 
 
+(defun some3 (fn l)
+  (funcall fn (find-if fn l)))
+
 SOME -> FIND-IF:
 (some f seq) -> (some #'(lambda (elt) (and (funcall f elt) elt)) seq) ; Not identical for NIL element.
 ----------------------------------------------------------------------------
@@ -2985,7 +2988,7 @@ Oh really? Who says that isn't the case?
 
 Kent has confirmed in comp.lang.lisp that the deprecation of the IF-NOT functions should be ignored.
 
-REMOVE-IF-NOT is often called "filter". (Perl's grep!)
+REMOVE-IF-NOT is often called "filter". (Perl's grep!) (Distinct from Graham's FILTER below!)
 Clojure:
 (filter odd? '(1 2 3 4 5)) => (1 3 5)
 Oz:
@@ -3105,6 +3108,7 @@ Writing a utility can highlight good places to use it!
 
 
 Does a list contain only one elt?
+Naive:
 (= (length l) 1)
 (= (length (loop for i from 1 to 1000000 collect i)) 1) ; ???
 
@@ -3252,7 +3256,8 @@ Generic function vs. explicit type checking:
 
 -------------------------------------------
 Graham's FILTER is weird...
-More efficient version of: (mapcar #'f (remove-if-not #'f seq))
+More efficient version of: (mapcar f (remove-if-not f seq))
+[Just as SOME can be viewed as: (funcall f (find-if f seq))]
 
 He draws the analogy FILTER:SOME::REMOVE-IF-NOT:FIND-IF
     The built-in REMOVE-IF-NOT returns all the values that might have been returned  
@@ -3312,6 +3317,8 @@ Similarly
       (when (funcall fn elt)
         (push elt acc)))) )  ; <-- Accumulate elts
 
+(Compare similarity between SOME/FIND-IF above.)
+
 His version only works on lists...
 
 REMOVE-IF-NOT is a sequence function:
@@ -3335,6 +3342,8 @@ Alternative:
 "STHISNOTPUNG"
 (filter #'(lambda (ch) (and (alpha-char-p ch) (lower-case-p ch) (char-upcase ch))) (coerce "Is this not pung?" 'list)))
 (#\S #\T #\H #\I #\S #\N #\O #\T #\P #\U #\N #\G)
+(filter (every-pred #'alpha-char-p #'lower-case-p #'char-upcase) "Is this not pung?")
+"STHISNOTPUNG"
 
 CLOS:
 (defgeneric filter (f seq)
@@ -4879,8 +4888,86 @@ Oz closure examples:
   0: FOO returned (X B C)
 (X B C)
 
+----------------------------------------------------------------------------
+250331 月
+§2.4.8.15 Sharpsign Equal-Sign
+https://www.lispworks.com/documentation/HyperSpec/Body/02_dho.htm
+§2.4.8.16 Sharpsign Sharpsign
+https://www.lispworks.com/documentation/HyperSpec/Body/02_dhp.htm
+
+(defvar *circle* '(a b c . #1=(d e f . #1#)))
+
+(sdraw *circle*)
+
+Not quite right:
+[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->etc.
+ |        |        |        |        |        |        |        |
+ v        v        v        v        v        v        v        v
+ A        B        C        D        E        F        D        E
+
+Accurate:
+                            +-------------------+
+                            |                   |
+                            v                   |
+[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]
+ |        |        |        |        |        |
+ v        v        v        v        v        v
+ A        B        C        D        E        F
+
+(loop repeat 10 for elt in *circle* collect elt)
+(A B C D E F D E F D)
+(loop repeat 20 for elt in *circle* collect elt)
+(A B C D E F D E F D E F D E F D E F D E)
 
 
+(eq #1='(a b c) #1#) => T
+
+[*|*]--->[*|*]------------------------------------>[*|*]--->NIL
+ |        |                                         |
+ |        | +---------------------------------------+
+ |        | |
+ v        v v
+ EQ      [*|*]--->[*|*]--->NIL
+          |        |
+          v        v
+         QUOTE    [*|*]--->[*|*]--->[*|*]--->NIL
+                   |        |        |
+                   v        v        v
+                   A        B        C
+
+
+(eq #1=(gensym) #1#) => NIL
+
+(read)
+(eq #1=(gensym) #1#)
+(EQ (GENSYM) (GENSYM))
+
+(eq (second *) (third *))
+T
+
+[*|*]--->[*|*]--------->[*|*]--->NIL
+ |        |              |
+ |        | +------------+
+ |        | |
+ v        v v
+ EQ      [*|*]--->NIL
+          |
+          v
+         GENSYM
+
+
+
+
+
+
+(defun my-eq (a b) (eq a b))
+(trace my-eq)
+
+(my-eq #1=(gensym) #1#)
+0: (MY-EQ #:G134 #:G135)
+0: MY-EQ returned NIL
+NIL
+----------------------------------------------------------------------------
 
 230927
 
