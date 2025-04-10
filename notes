@@ -2421,10 +2421,8 @@ Hidden modification!
 - Second time never returns!
 test-core TEST-PARTIAL
 (equal '(B C 2 Y Z)
-        (funcall (compose (partial #'apply #'nconc) #'mapcar)
-                 #'rest
-                 '((a b c) (1 2) (x y z)))) ; MAPCAN
-
+        (funcall (compose (partial #'apply #'nconc) (partial #'mapcar #'rest))
+                 (copy-tree '((a b c) (1 2) (x y z)))) ) ; MAPCAN
 
 (defvar *l* '((a b c) (1 2) (x y z)))
 *l* => ((A B C) (1 2) (X Y Z))
@@ -3319,6 +3317,10 @@ Similarly
 
 (Compare similarity between SOME/FIND-IF above.)
 
+Graham remarks that this sort of iterative code that records work done up to a given point in an accumulator
+is similar to the output of a compiler performing tail call optimization. He argues that in this simple case
+it's easier to just write the iterative version directly.
+
 His version only works on lists...
 
 REMOVE-IF-NOT is a sequence function:
@@ -3373,6 +3375,8 @@ Partition a sequence (list) into groups of size N (last group may be incomplete)
 (partition-all 5 (range 20)) => ((0 1 2 3 4) (5 6 7 8 9) (10 11 12 13 14) (15 16 17 18 19))
 (partition-all 6 (range 20)) => ((0 1 2 3 4 5) (6 7 8 9 10 11) (12 13 14 15 16 17) (18 19))]
 
+Graham points out that GROUP can be very useful in defining macros and uses it throughout the book.
+
 2 edge cases:
 1. SOURCE is empty
 2. N = 0
@@ -3425,6 +3429,9 @@ More general solution handling sequences:
     (vector (zerop (length seq)))) )
 
 (defun group (seq n)
+  (assert (typep n `(integer (0)))
+          (n)
+          "N must be a positive integer.")
   (loop for (take drop) =      (multiple-value-list (take-drop n seq))
                           then (multiple-value-list (take-drop n drop))
         until (emptyp take)
@@ -4897,6 +4904,12 @@ https://www.lispworks.com/documentation/HyperSpec/Body/02_dhp.htm
 
 (defvar *circle* '(a b c . #1=(d e f . #1#)))
 
+(let ((*print-circle* t)) (print *circle*) :foo)
+                                           ^^^^  !!
+(A B C . #1=(D E F . #1#)) 
+:FOO
+* 
+
 (sdraw *circle*)
 
 Not quite right:
@@ -4968,7 +4981,114 @@ T
 0: MY-EQ returned NIL
 NIL
 ----------------------------------------------------------------------------
+250409 水
+Partial function application (not currying!)
 
+(defun linear3 (m b x) (+ (* m x) b))
+(linear3 3 2 7) => 23
+
+• Currying
+((lambda (m) ((lambda (b) ((lambda (x) (+ (* m x) b)) 7)) 2)) 3)
+
+((lambda (m)
+   ((lambda (b)
+      ((lambda (x)
+         (+ (* m x) b))
+       7))
+    2))
+ 3)
+
+(defun f (m)
+  #'(lambda (b)
+      #'(lambda (x)
+          (+ (* m x) b))))
+
+(f 3) => #<FUNCTION (LAMBDA (B) :IN F) {1002F5923B}>
+(funcall * 2) => #<FUNCTION (LAMBDA (X) :IN F) {1002F59C1B}>
+(funcall * 7) => 23
+
+(funcall (funcall (funcall #'f 3) 2) 7) => 23
+
+• Partial application
+(defun linear2 (b x) (linear3 3 b x))
+(defun linear1 (x) (linear2 2 x))
+(defun linear0 () (linear1 7))
+
+(= (linear3 3 2 7) (linear2 2 7))
+(= (linear3 3 2 7) (linear1 7)
+(= (linear3 3 2 7) (linear0))
+
+Graham ACL 110 页
+(defun curry (fn &rest args)
+  #'(lambda (&rest args2)
+      (apply fn (append args args2))))
+
+(defun rcurry (fn &rest args)
+  #'(lambda (&rest args2)
+      (apply fn (append args2 args))))
+
+Clojure-influenced:
+(defun partial (f &rest fixed)
+  (if (null fixed)
+      f
+      (destructuring-bind (fixed0 &rest fixed) fixed
+        (if (null fixed)
+            #'(lambda (&rest args) (apply f fixed0 args))
+            (destructuring-bind (fixed1 &rest fixed) fixed
+              (if (null fixed)
+                  #'(lambda (&rest args) (apply f fixed0 fixed1 args))
+                  (destructuring-bind (fixed2 &rest fixed) fixed
+                    (if (null fixed)
+                        #'(lambda (&rest args) (apply f fixed0 fixed1 fixed2 args))
+                        #'(lambda (&rest args)
+                            (apply f fixed0 fixed1 fixed2 (append fixed args)))) )))) )))
+
+(defun partial* (f &rest fixed)
+  (if (null fixed)
+      f
+      #'(lambda (&rest args)
+          (apply f (append args fixed)))) )
+
+(< 4 ?)
+     ^--- PARTIAL
+(< ? 4)
+   ^----- PARTIAL*
+
+(< 4 3) => NIL
+(funcall (partial #'< 4) 3) => NIL
+
+(< 3 4) => T
+(funcall (partial* #'< 4) 3) => T
+
+
+(= (linear3 3 2 7) (funcall (partial #'linear3) 3 2 7))
+(= (linear2 2 7) (funcall (partial #'linear3 3) 2 7))
+(= (linear1 7) (funcall (partial #'linear3 3 2) 7))
+(= (linear0) (funcall (partial #'linear3 3 2 7)))
+
+Quiz:
+(funcall (compose #'first #'rest #'rest #'rest #'rest) '(a b c d e f))
+(mapcar (compose #'1+ #'1+) (loop for i from 1 to 10 collect i))
+(mapcar (compose #'1+ #'1-) (loop for i from 1 to 10 collect i))
+(mapcar (compose #'list (partial #'* 2)) (loop for i from 1 to 10 collect i))
+(funcall (compose #'length #'remove-if-not) #'evenp (loop for i from 1 to 10 collect i))
+
+(mapcar (compose #'not #'evenp) (loop for i from 1 to 10 collect i))
+(mapcar (complement #'evenp) (loop for i from 1 to 10 collect i))
+
+(funcall (partial #'reduce #'+) '(1 2 3))
+(funcall (partial #'format nil "~@(~R~)") 12345)
+(let ((xxs '((1 2 3 4 5) (5 4 5 4 3 2) (7 8 9 0 1 2 3)))) ; Learn You A Haskell 18 页
+  (mapcar (partial #'remove-if-not #'evenp) xxs))
+
+
+(funcall (partial* #'typep 'atom) 'a)
+(funcall (partial* #'typep 'atom) '(1 2))
+(funcall (complement (partial* #'typep 'atom)) '(1 2))
+(funcall (partial #'- 1) 8)
+(funcall (partial* #'- 1) 8)
+(mapcar (compose (partial* #'< 10000) #'abs) '(23 12345 -80 -80000))
+----------------------------------------------------------------------------
 230927
 
 (defmacro condp (pred val &rest clauses)
