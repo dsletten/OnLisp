@@ -4568,7 +4568,7 @@ CLHS says:
 MAPC/MAPL also correspond to MAPCAR/MAPLIST but are used for side effects:
 (mapc (compose #'write-char #'char-upcase) (coerce "Is this not pung?" 'list))
 IS THIS NOT PUNG?  <-- Side effect
-(#\I #\s #\  #\t #\h #\i #\s #\  #\n #\o #\t #\  #\p #\u #\n #\g #\?)  <-- Input is list is simply returned
+(#\I #\s #\  #\t #\h #\i #\s #\  #\n #\o #\t #\  #\p #\u #\n #\g #\?)  <-- Input list is simply returned
 
 Clearer?
 (loop for ch across "Is this not pung?" do (write-char (char-upcase ch)))
@@ -4813,6 +4813,7 @@ Alternatively:
 (defun mappend (f &rest lists)
   (apply #'append (apply #'mapcar f lists)))
 
+-------------------------------------------
 Apply MAPCAR across multiple lists in sequence (not parallel):
 (mapcar f (append l1 l2 l3 ...))
 
