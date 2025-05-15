@@ -961,6 +961,7 @@ Reduction - In the context of tail recursion, a single derived problem whose sol
             provides the answer to a given problem directly, without further computation.
             The derived problem is typically simpler than the original problem.
 
+76-78 页:
 "Whenever a problem is converted into a new problem such that no further computation is 
 necessary once the new problem is solved, the new problem is said to be a _reduction_ of
 the original problem. Whenever a recursive procedure is defined such that all recursive calls
@@ -3395,6 +3396,8 @@ Old skool idiom:
 1. CONS result (backwards)
 2. NREVERSE result when done
 
+His version only works on lists...
+
 More general solution handling sequences:
 (defun drop (n seq)
   "Drop the first N elements of sequence SEQ."
@@ -3471,16 +3474,22 @@ Evaluation took:
 
 
 More competitive with Graham:
-(defun take-drop (n seq)
-  "Split a sequence at the Nth element. Return the subsequences before and after."
+(defgeneric take-drop (n seq)
+  (:documentation "Split a sequence at the Nth element. Return the subsequences before and after."))
+(defmethod take-drop :around (n seq)
   (assert (typep n `(integer 0))
           (n)
           "N must be a non-negative integer.")
-  (typecase seq
-    (list (do ((tail seq (rest tail))
-               (i 0 (1+ i)))
-              ((or (= i n) (endp tail)) (values (subseq seq 0 i) tail))))
-    (vector (values (take n seq) (drop n seq)))) ) ; Works for strings too
+  (call-next-method))
+(defmethod take-drop (n (seq list))
+  (do ((tail seq (rest tail))
+       (i 0 (1+ i)))
+      ((or (= i n) (endp tail))
+       (if (endp tail)
+           (values seq '())
+           (values (subseq seq 0 i) tail)))) )
+(defmethod take-drop (n (seq vector))
+  (values (take n seq) (drop n seq))) ; Works for strings too
 
 (let ((l (loop for i from 1 to 10000 collect i)))
   (time (loop repeat 10000 do (group l 10))))
@@ -4517,7 +4526,7 @@ Using a generator for lists/vectors. Consolidates LOOP for single EXTREMA functi
 Review
 • List mapping functions
 Granddaddy MAPCAR
-Apply a function F to each element of a list, yielding a new function:
+Apply a function F to each element of a list, yielding a new list:
 (mapcar #'1+ '(1 2 3 4 5)) => (2 3 4 5 6)
 (mapcar #'char-upcase '(#\a #\b #\c)) => (#\A #\B #\C)
 
@@ -4572,9 +4581,9 @@ CLHS example:
 (mapl #'(lambda (x) (push x *dummy*)) '(1 2 3 4)) ; Push successive CONSes
 *dummy* => ((4) (3 4) (2 3 4) (1 2 3 4))
 
-• Sequence mapping functions
+• Sequence mapping function
 MAP like MAPCAR applies F to elts of 1+ sequences. Type of result sequence is given.
-Works with mixed types of inpute sequences:
+Works with mixed types of input sequences:
 (map 'vector #'sqrt #(2 4 6 8)) => #(1.4142135 2.0 2.4494898 2.828427)
 (map 'list #'sqrt #(2 4 6 8)) => (1.4142135 2.0 2.4494898 2.828427)
 (map 'vector #'+ '(1 2 3 4) #(0 1 0 1)) => #(1 3 3 5)
@@ -4582,6 +4591,7 @@ Works with mixed types of inpute sequences:
 
 Omitting result type - MAP used for side effect only:
 (map nil (compose #'print #'sqrt) '(2 4 6 8))
+     ^^^
 
 1.4142135                  <-- Output (side effect)
 2.0 
@@ -4591,9 +4601,13 @@ NIL                        <-- Result
 -------------------------------------------
 Graham's functions
 
+Goal: Apply FN to integers 1,...,10
+
 What's wrong with this?
-Apply FN to integers 1,...,10
-Reader macro:
+(mapcar #'sqrt '(1 2 3 4 5 6 7 8 9 10)) => (1.0 1.4142135 1.7320508 2.0 2.236068 2.4494898 2.6457512 2.828427 3.0 3.1622777)
+
+Shortcut with reader macro: (Same wasted work)
+(See ranges below)
 #[1 10] => (1 2 3 4 5 6 7 8 9 10)
 (mapcar #'sqrt #[1 10]) => (1.0 1.4142135 1.7320508 2.0 2.236068 2.4494898 2.6457512 2.828427 3.0 3.1622777)
 
@@ -4673,26 +4687,41 @@ New - better
   (error "Mismatched input types."))
 (defmethod make-range ((start number) (end number) (step number))
   (mapa-b #'identity start end step))
+(defmethod make-range ((start number) (end number) (step function))
+  (if (<= start end)
+      (loop with f = (iterate step start)
+            for elt = (funcall f)
+            until (> elt end)
+            collect elt)
+      (loop with f = (iterate step start)
+            for elt = (funcall f)
+            until (< elt end)
+            collect elt)))
 (defmethod make-range ((start number) (end null) (step number))
   (declare (ignore end))
-  (if (plusp start)
-      (make-range 0 (1- start) step)
-      '()))
+  (cond ((zerop start) '())
+        ((plusp start) (make-range 0 (1- start) step))
+        (t (make-range 0 (1+ start) step))))
 (defmethod make-range ((start number) end step)
   (error "Mismatched input types."))
 
-Haskell vs. Clojure
-[1..10] => [1,2,3,4,5,6,7,8,9,10]
+Haskell
+[1..10] => [1,2,3,4,5,6,7,8,9,10] -- Both endpoints inclusive
 
-(range 1 10) => (1 2 3 4 5 6 7 8 9)
+Clojure
+(range 1 10) => (1 2 3 4 5 6 7 8 9) ; Upper endpoint exclusive!
 (range 1 (inc 10)) => (1 2 3 4 5 6 7 8 9 10) ; Ugh...
 (range 5) => (0 1 2 3 4)
 
 My Common Lisp version:
 (range 1 10) => (1 2 3 4 5 6 7 8 9 10) ; Both endpoints included
 (range 5) => (0 1 2 3 4) ; Value is exclusive upper bound (or count)
+(range -5) => (0 -1 -2 -3 -4)
+(range 0) => NIL ; Perhaps counterintuitive
+(range 0 0) => (0)
 (range 1 3 1/10) => (1 11/10 6/5 13/10 7/5 3/2 8/5 17/10 9/5 19/10
                      2 21/10 11/5 23/10 12/5 5/2 13/5 27/10 14/5 29/10 3)
+(range 1 1024 (partial #'* 2)) => (1 2 4 8 16 32 64 128 256 512 1024) ; Can't do that in Haskell!
 (range #\a #\e) => (#\a #\b #\c #\d #\e)
 (range #\s #\j) => (#\s #\r #\q #\p #\o #\n #\m #\l #\k #\j)
 (range 4 #\j)
@@ -4726,19 +4755,57 @@ Add range syntax
 #[1 3 1/10] => (1 11/10 6/5 13/10 7/5 3/2 8/5 17/10 9/5 19/10
                 2 21/10 11/5 23/10 12/5 5/2 13/5 27/10 14/5 29/10 3)
 #[#\a #\e] => (#\a #\b #\c #\d #\e)
+#[1 1024 (partial #'* 2)] => (1 2 4 8 16 32 64 128 256 512 1024)
 -------------------------------------------
 More Graham mapping functions
+
+MAP-> maps a function FN over a sequence beginning with the value START, whose successive elements are generated
+via SUCC-FN, and which terminates based on TEST-FN.
+
+For example, increment the values in (-2 -1.5 -1 -0.5 0):
+(map-> #'1+ -2 #'(lambda (x) (> x 0)) #'(lambda (x) (+ x 0.5)))
+• Start with -2
+• Add 0.5 to get next element
+• Stop when element is greater than 0
+• Add one to each
+
+Graham:
 (defun map-> (fn start test-fn succ-fn)
   (do ((i start (funcall succ-fn i))
        (result '()))
       ((funcall test-fn i) (nreverse result))
     (push (funcall fn i) result)))
 
+My rewrite:
 (defun map-> (f start test step)
   "Collect repeated application of the function F to START as it is transformed by the STEP function until TEST returns true."
   (loop for obj = start then (funcall step obj)
         until (funcall test obj)
         collect (funcall f obj)))
+
+MAP-> could serve as the universal CONS mapping function, replacing MAPLIST, MAPCAR, MAPA-B, etc.:
+(mapcar #'length '("Is" "this" "not" "pung?"))
+vs.
+(map-> (compose #'length #'first) '("Is" "this" "not" "pung?") #'null #'rest))
+
+(maplist #'reverse '(1 2 3 4))
+vs.
+(map-> #'reverse '(1 2 3 4) #'null #'rest))
+
+(mapa-b #'1+ -2 0 0.5)
+vs.
+(map-> #'1+ -2 #'(lambda (x) (> x 0)) #'(lambda (x) (+ x 0.5))))
+
+In general, Graham poses:
+(defun mapa-b (f a b &optional (step 1))
+  (map-> f
+         a
+         #'(lambda (x) (> x b))
+         #'(lambda (x) (+ x step))))
+
+Alternatively:
+(defun mapa-b (f a b &optional (step 1))
+  (map-> f a (partial* #'> b) (partial #'+ step)))
 
 ;;;
 ;;;    Non-destructive alternative to MAPCAN.
@@ -4746,9 +4813,12 @@ More Graham mapping functions
 (defun mappend (f &rest lists)
   (apply #'append (apply #'mapcar f lists)))
 
-;;;
-;;;    Map over multiple lists in sequence, accumulating all results.
-;;;    
+Apply MAPCAR across multiple lists in sequence (not parallel):
+(mapcar f (append l1 l2 l3 ...))
+
+But this is inefficient, APPEND produces ephemeral list that is thrown away.
+
+Instead:
 (defun mapcars (fn &rest lsts)
   (let ((result '()))
     (dolist (l lsts)
@@ -4764,9 +4834,89 @@ More Graham mapping functions
                  do (enqueue result (funcall f elt)))
         finally (return (elements result))))
 
+(defun mapcars (f &rest lists)
+  (loop for list in lists
+        nconc (loop for elt in list
+                    collect (funcall f elt))))
+
+-------------------------------------------
+250430 水
+MAPCAR
+• Transform single list into new list of same length with original elements replaced
+  by results of applying function to them.
+• Transform multiple lists into single new list (of length constrained by shortest arg) whose
+  elements result from applying function to multiple args.
+
+RMAPCAR
+• Transform single tree into new tree of same "shape" with original leaves (non-NIL atoms) replaced with
+  result of applying function to them.
+• Transform multiple trees of same "shape" (or constrained by smallest subtrees of args) into
+  new tree with elements resulting from application of function.
+
+(defun simple-mapcar (f l)
+  (if (endp l)
+      '()
+      (cons (funcall f (first l)) (simple-mapcar f (rest l)))) ) ; Build corresponding list structure
+
+(defun simple-rmapcar (f obj)
+  (cond ((null obj) '())
+        ((atom obj) (funcall f obj))
+        (t (cons (simple-rmapcar f (car obj))      ; Build corresponding tree structure
+                 (simple-rmapcar f (cdr obj))))) )
+
+Skeletal forms:
+(defun copy-list (l)
+  (if (endp l)
+      '()
+      (cons (first l) (copy-list (rest l)))) )
+
+(defun copy-tree (tree)
+   (if (atom tree)
+       tree
+       (cons (copy-tree (car tree))
+             (copy-tree (cdr tree)))) )
+
+[For a list of atoms, SIMPLE-RMAPCAR encompasses SIMPLE-MAPCAR's functionality.]
+
+(simple-mapcar #'(lambda (x) (+ x 2)) '(5 4 3 2 1)) => (7 6 5 4 3)
+(simple-mapcar #'length '("pung" "foo" "bar" "baz")) => (4 3 3 3)
+
+(simple-rmapcar #'(lambda (x) (+ x 2)) '(5 4 3 2 1)) => (7 6 5 4 3)
+(simple-rmapcar #'1+ '(1 2 (3 4 (5) 6) 7 (8 9))) => (2 3 (4 5 (6) 7) 8 (9 10))
+
+Handles dotted pairs
+[*|*]------->[*|*]------->[*|*]--->NIL
+ |            |            |
+ v            v            v
+[*|*]--->2   [*|*]--->4   [*|*]--->6
+ |            |            |
+ v            v            v
+ 1            3            5
+
+(simple-rmapcar #'1+ '((1 . 2) (3 . 4) (5 . 6))) => ((2 . 3) (4 . 5) (6 . 7))
+
+[*|*]------->[*|*]------->[*|*]--->NIL
+ |            |            |
+ v            v            v
+[*|*]--->3   [*|*]--->5   [*|*]--->7
+ |            |            |
+ v            v            v
+ 2            4            6
+
+(simple-rmapcar #'(lambda (x) (+ x 3)) '(1 2 (3 (4 (5) 6) (7)) 8 (9))) => (4 5 (6 (7 (8) 9) (10)) 11 (12))
+Arbitrary depth
+(simple-rmapcar #'(lambda (x) (+ x 5)) '(((( (1) )))) ) => (((((6)))))
+
+Full MAPCAR is harder:
+(defun mapcar (f &rest args)
+  (if (some #'null args)
+      '()
+      (loop for arg in args
+            collect (first arg) into firsts
+            collect (rest arg) into rests
+            finally (return (cons (apply f firsts) (apply #'mapcar f rests)))) ))
 
 ----------------------------------------------------------------------------
-
 240514 火
 4 types of closures.
 
@@ -4774,9 +4924,9 @@ https://en.wikipedia.org/wiki/Funarg_problem
 ("Sideward Funarg" Lecture Notes in Computer Science 441, 290 页)
 
 2 "Upward Funargs"
-- Indefinite extent
-- Bindings must be preserved on heap
-- Binding still accessible once enclosing form has exited.
+• Indefinite extent
+• Bindings must be preserved on heap
+• Binding still accessible once enclosing form has exited.
 
 I. Closure over variable binding
 (let ((index 0))
@@ -4807,10 +4957,10 @@ Oz example (58 页)
 => (STAT . HELLO)
 
 2 "Downward Funargs"
-- Dynamic extent
-- All state still on stack
-- Unavailable once enclosing BLOCK/TAGBODY exits
-- Nothing returned back up callstack.
+• Dynamic extent
+• All state still on stack
+• Unavailable once enclosing BLOCK/TAGBODY exits
+• Nothing returned back up callstack.
 
 III. Closure over BLOCK name.
 (defun eject (f)
@@ -4984,6 +5134,37 @@ NIL
 250409 水
 Partial function application (not currying!)
 
+Why?
+General-purpose function -> customized function (While you wait! Add Rhinestones $2.50)
++
+
+(defun add2 (x)
+  (+ x 2))
+(defun add3 (x)
+  (+ x 3))
+...
+
+#'(lambda (x) (+ x 2))
+(partial #'+ 2)
+
+
+Divisibility
+#'(lambda (p d) (zerop (mod p d)))
+
+(defun divisible-by-3-p (n)
+  (zerop (mod n 3)))
+(defun divisible-by-4-p (n)
+  (zerop (mod n 4)))
+(defun divisible-by-5-p (n)
+...
+  
+(compose (partial #'= 0) (partial* #'mod 3))
+(complement (compose (partial #'= 0) (partial* #'mod 3)))
+
+
+
+y = mx + b
+• Consider m, b, x as variables
 (defun linear3 (m b x) (+ (* m x) b))
 (linear3 3 2 7) => 23
 
@@ -5018,7 +5199,7 @@ Partial function application (not currying!)
 (= (linear3 3 2 7) (linear1 7)
 (= (linear3 3 2 7) (linear0))
 
-Graham ACL 110 页
+Graham ACL 110 页 - Misnomer. Not currying but rather partial application.
 (defun curry (fn &rest args)
   #'(lambda (&rest args2)
       (apply fn (append args args2))))
@@ -5071,7 +5252,7 @@ Quiz:
 (mapcar (compose #'1+ #'1+) (loop for i from 1 to 10 collect i))
 (mapcar (compose #'1+ #'1-) (loop for i from 1 to 10 collect i))
 (mapcar (compose #'list (partial #'* 2)) (loop for i from 1 to 10 collect i))
-(funcall (compose #'length #'remove-if-not) #'evenp (loop for i from 1 to 10 collect i))
+(funcall (compose #'length (partial #'remove-if-not #'evenp)) (loop for i from 1 to 10 collect i))
 
 (mapcar (compose #'not #'evenp) (loop for i from 1 to 10 collect i))
 (mapcar (complement #'evenp) (loop for i from 1 to 10 collect i))
@@ -5081,13 +5262,33 @@ Quiz:
 (let ((xxs '((1 2 3 4 5) (5 4 5 4 3 2) (7 8 9 0 1 2 3)))) ; Learn You A Haskell 18 页
   (mapcar (partial #'remove-if-not #'evenp) xxs))
 
-
 (funcall (partial* #'typep 'atom) 'a)
 (funcall (partial* #'typep 'atom) '(1 2))
 (funcall (complement (partial* #'typep 'atom)) '(1 2))
 (funcall (partial #'- 1) 8)
 (funcall (partial* #'- 1) 8)
 (mapcar (compose (partial* #'< 10000) #'abs) '(23 12345 -80 -80000))
+
+Some performance penalty for using PARTIAL(*)
+(time (dotimes (i 10000) (funcall #'(lambda (x) (+ x 8)) 7)))
+(time (dotimes (i 10000) (funcall (partial #'+ 8) 7)))
+(let ((f (partial #'+ 8))) (time (dotimes (i 10000) (funcall f 7))))
+
+
+(time (dotimes (i 10000) (funcall #'(lambda (n) (format nil "~@(~R~)" n)) 12345)))
+(time (dotimes (i 10000) (funcall (partial #'format nil "~@(~R~)") 12345)))
+(let ((f (partial #'format nil "~@(~R~)"))) (time (dotimes (i 10000) (funcall f 12345))))
+
+(let ((xxs '((1 2 3 4 5) (5 4 5 4 3 2) (7 8 9 0 1 2 3))))
+  (time (dotimes (i 10000)
+          (mapcar #'(lambda (xs) (remove-if-not #'evenp xs)) xxs))))
+(let ((xxs '((1 2 3 4 5) (5 4 5 4 3 2) (7 8 9 0 1 2 3))))
+  (time (dotimes (i 10000)
+          (mapcar (partial #'remove-if-not #'evenp) xxs))))
+(let ((xxs '((1 2 3 4 5) (5 4 5 4 3 2) (7 8 9 0 1 2 3)))
+      (f (partial #'remove-if-not #'evenp)))
+  (time (dotimes (i 10000)
+          (mapcar f xxs))))
 ----------------------------------------------------------------------------
 230927
 
