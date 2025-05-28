@@ -4581,7 +4581,7 @@ CLHS example:
 (mapl #'(lambda (x) (push x *dummy*)) '(1 2 3 4)) ; Push successive CONSes
 *dummy* => ((4) (3 4) (2 3 4) (1 2 3 4))
 
-• Sequence mapping function
+• Sequence mapping function: MAP
 MAP like MAPCAR applies F to elts of 1+ sequences. Type of result sequence is given.
 Works with mixed types of input sequences:
 (map 'vector #'sqrt #(2 4 6 8)) => #(1.4142135 2.0 2.4494898 2.828427)
@@ -4605,6 +4605,8 @@ Goal: Apply FN to integers 1,...,10
 
 What's wrong with this?
 (mapcar #'sqrt '(1 2 3 4 5 6 7 8 9 10)) => (1.0 1.4142135 1.7320508 2.0 2.236068 2.4494898 2.6457512 2.828427 3.0 3.1622777)
+                 ^^^^^^^^^^^^^^^^^^^^
+                 Dummy input list is simply thrown away...
 
 Shortcut with reader macro: (Same wasted work)
 (See ranges below)
@@ -4796,7 +4798,7 @@ vs.
 vs.
 (map-> #'1+ -2 #'(lambda (x) (> x 0)) #'(lambda (x) (+ x 0.5))))
 
-In general, Graham poses:
+In general, Graham poses: (This is not the full MAPA-B above. Only handles A < B.)
 (defun mapa-b (f a b &optional (step 1))
   (map-> f
          a
@@ -4814,12 +4816,65 @@ Alternatively:
   (apply #'append (apply #'mapcar f lists)))
 
 -------------------------------------------
-Apply MAPCAR across multiple lists in sequence (not parallel):
+250528 水
+5 approaches to MAPCAR, i.e., 5 ways to accumulate a list result:
+1. Go with the flow. Follow the natural process of building a list from the head:
+(defun mapcar (f l)
+  (if (endp l)
+      '()
+      (cons (funcall f (first l)) (simple-mapcar f (rest l)))) )
+
+Not tail-recursive. Prone to stack overflow.
+
+2. Accumulate list head to tail, then reverse (in place) when done:
+(defun mapcar (f l)
+  (labels ((process (l result)
+             (if (endp l)
+                 (nreverse result)
+                 (process (rest l) (cons (funcall f (first l)) result)))) )
+    (process l '())))
+
+Many flavors of this (Not necessarily recursive, e.g., DO). Standard old school idiom.
+Tail-recursive. NREVERSE only modifies privately owned list, so this maintains a functional interface.
+
+3. Get yer hands dirty. List surgery:
+(defun mapcar (f l)
+  (if (null l)
+      '()                    ; <-- Special case: empty list
+      (destructuring-bind (first . more) l
+        (let ((result (list (funcall f first))))
+          (if (null more)
+              result         ; <-- Special case: single-elt list
+              (let ((tail result)) ; <-- General case: Accumulate TCONC
+                (dolist (elt more result)
+                  (setf (rest tail) (list (funcall f elt))
+                        tail (rest tail)))) )))) )
+
+Standard Lisp idiom of TCONC (https://www.merl.com/publications/TR91-04 ch. 3)
+"Tail Concatenation". Messy. Feels like C code.
+
+4. Use an explicit queue:
+(defun mapcar (f l)
+  (let ((result (make-linked-queue)))
+    (dolist (elt l (elements result)) ; <-- This queue implementation allows easily extracting the underlying list
+      (enqueue result (funcall f elt)))) )
+
+Most likely just encapsulates the details of option 3.
+
+5. Use the LOOP macro:
+(defun mapcar (f l)
+  (loop for elt in l
+        collect (funcall f l)))
+
+Probably something like 3. under the covers!
+-------------------------------------------
+MAPCARS: Apply MAPCAR across multiple lists in sequence (not parallel):
 (mapcar f (append l1 l2 l3 ...))
 
 But this is inefficient, APPEND produces ephemeral list that is thrown away.
 
 Instead:
+- Graham's version
 (defun mapcars (fn &rest lsts)
   (let ((result '()))
     (dolist (l lsts)
@@ -4827,6 +4882,7 @@ Instead:
 	(push (funcall fn obj) result)))
     (nreverse result)))
 
+- An alternative
 (defun mapcars (f &rest lists)
   "Map the function F over each element of each list argument provided."
   (loop with result = (make-linked-queue)
@@ -4835,6 +4891,7 @@ Instead:
                  do (enqueue result (funcall f elt)))
         finally (return (elements result))))
 
+- Hard to beat
 (defun mapcars (f &rest lists)
   (loop for list in lists
         nconc (loop for elt in list
@@ -4847,12 +4904,14 @@ MAPCAR
   by results of applying function to them.
 • Transform multiple lists into single new list (of length constrained by shortest arg) whose
   elements result from applying function to multiple args.
+• Only works with proper list args. (Top-level structures are proper lists. Elements may be anything.)
 
 RMAPCAR
 • Transform single tree into new tree of same "shape" with original leaves (non-NIL atoms) replaced with
   result of applying function to them.
 • Transform multiple trees of same "shape" (or constrained by smallest subtrees of args) into
   new tree with elements resulting from application of function.
+• Only works with proper trees?  
 
 (defun simple-mapcar (f l)
   (if (endp l)
@@ -4917,6 +4976,8 @@ Full MAPCAR is harder:
             collect (rest arg) into rests
             finally (return (cons (apply f firsts) (apply #'mapcar f rests)))) ))
 
+
+(rmapcar f '() '() '())
 ----------------------------------------------------------------------------
 240514 火
 4 types of closures.
