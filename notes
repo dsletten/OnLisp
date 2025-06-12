@@ -4649,7 +4649,7 @@ Take two:
 (defun mapa-b (f a b &optional (step 1))
   (assert (plusp step) () "Step increment must be positive.")
   (if (<= a b)
-      (loop for i from a to b by step collect (funcall f i))
+      (loop for i from a upto b by step collect (funcall f i))
       (loop for i from a downto b by step collect (funcall f i))))
 -------------------------------------------
 Let's make ranges!
@@ -4850,6 +4850,45 @@ Tail-recursive. NREVERSE only modifies privately owned list, so this maintains a
                   (setf (rest tail) (list (funcall f elt))
                         tail (rest tail)))) )))) )
 
+Example
+Add: 7 to end of list
+RESULT             TAIL
+  |                 |
+  v                 v
+[*|*]---> ... --->[*|*]--->NIL
+ |                 |
+ v                 v
+ 9                -2
+
+I. Create new CONS: (cons x '()) ≡ (list x)
+RESULT             TAIL
+  |                 |
+  v                 v
+[*|*]---> ... --->[*|*]--->NIL   [*|*]--->NIL
+ |                 |              |          
+ v                 v              v          
+ 9                -2              7          
+
+II. Modify current last CDR
+RESULT             TAIL
+  |                 |
+  v                 v
+[*|*]---> ... --->[*|*]--->[*|*]--->NIL
+ |                 |        |  
+ v                 v        v  
+ 9                -2        7          
+
+III. Point to new TAIL
+RESULT                      TAIL
+  |                          |
+  v                          v
+[*|*]---> ... --->[*|*]--->[*|*]--->NIL
+ |                 |        |  
+ v                 v        v  
+ 9                -2        7  
+
+
+
 Standard Lisp idiom of TCONC (https://www.merl.com/publications/TR91-04 ch. 3)
 "Tail Concatenation". Messy. Feels like C code.
 
@@ -4861,7 +4900,7 @@ Standard Lisp idiom of TCONC (https://www.merl.com/publications/TR91-04 ch. 3)
 
 Most likely just encapsulates the details of option 3.
 
-5. Use the LOOP macro:
+5. Use the LOOP macro with COLLECT:
 (defun mapcar (f l)
   (loop for elt in l
         collect (funcall f l)))
@@ -4869,7 +4908,11 @@ Most likely just encapsulates the details of option 3.
 Probably something like 3. under the covers!
 -------------------------------------------
 MAPCARS: Apply MAPCAR across multiple lists in sequence (not parallel):
-(mapcar f (append l1 l2 l3 ...))
+(mapcars #'abs '(2 5 6) '(99 -23 -8)) => (2 5 6 99 23 8)
+
+"Obvious" definition:
+(defun mapcars (f &rest lists)
+  (mapcar f (apply #'append lists)))
 
 But this is inefficient, APPEND produces ephemeral list that is thrown away.
 
@@ -4899,12 +4942,100 @@ Instead:
 
 -------------------------------------------
 250430 水
+Mapping over trees
+
+Cases to consider for tree mapping function:
+- Only proper trees allowed? Allow dotted trees?
+  - Single tree
+  - Multiple trees same shape
+  - Multiple trees inconsistent shapes
+
+Two views of tree: (另见 Tanimoto ch. 2 notes)
+- List of lists
+- General tree (arbitrary number of children/node)
+  - Recast as binary tree
+
+((1 2) (3 4 5))
+
+List of lists:
+[*|*]------------------>[*|*]--->NIL
+ |                       |
+ v                       v
+[*|*]--->[*|*]--->NIL   [*|*]--->[*|*]--->[*|*]--->NIL
+ |        |              |        |        |
+ v        v              v        v        v
+ 1        2              3        4        5
+
+Subtrees are FIRST, SECOND, THIRD, ... elements.
+Generate result by using MAPCAR to iterate across top-level list. Sublists are
+passed as arguments to the mapping function.
+(Map one list of lists to another list of lists.)
+
+General tree:
+       ◯       
+      / \                                                   
+     /   \                                                  
+    /     \                                                 
+   ◯       ◯                                                
+  / \     /|\                                               
+ /   \   / | \                                              
+1     2 3  4  5
+
+However, any tree can be represented as a binary tree.
+[Just as any number can be represented in binary radix.]
+       ◯       
+      / \                                                   
+     /   \                                                  
+    ◯     \                                                 
+   / \     \                                             
+  /   \     \                                         
+ 1     ◯     \                                        
+      / \     \
+     /   \     \
+    2    NIL    ◯
+               / \
+              /   \     
+             3     ◯    
+                  / \   
+                 /   \  
+                4     ◯   
+                     / \  
+                    /   \ 
+                   5    NIL
+
+                                             
+Left subtree
+   is CAR
+   ◯                  ◯          
+  / \                / \         
+ /   \              /   \        
+1     ◯            3     ◯       
+     / \                / \      
+    /   \              /   \     
+   2    NIL           4     ◯    
+                           / \   
+                          /   \  
+                         5    NIL
+                     Right subtree
+                        is CDR
+
+Generate result by processing CAR, processing CDR then CONSing together:
+car -> car'
+cdr -> cdr'
+(cons car' cdr') => Result tree
+
+Consider what MAPCAR does and extend to trees:
 MAPCAR
 • Transform single list into new list of same length with original elements replaced
   by results of applying function to them.
+  (mapcar #'length '("cat" "antelope" "shrew" "platypus")) => (3 8 5 8)
 • Transform multiple lists into single new list (of length constrained by shortest arg) whose
-  elements result from applying function to multiple args.
+  elements result from applying n-ary function to corresponding elements of n lists.
+  (mapcar #'(lambda (x y) (mod x y)) '(7 0 1 4) '(4 2 6 3)) => (3 0 1 1)
+  (mapcar #'(lambda (x y) (mod x y)) '(7 0 1) '(4 2 6 3)) => (3 0 1)
 • Only works with proper list args. (Top-level structures are proper lists. Elements may be anything.)
+  (mapcar #'1+ '(1 2 . 3)) => TYPE-ERROR
+  (mapcar #'car '((a . b) (c . d) (e . f))) => (A C E)
 
 RMAPCAR
 • Transform single tree into new tree of same "shape" with original leaves (non-NIL atoms) replaced with
@@ -4913,28 +5044,52 @@ RMAPCAR
   new tree with elements resulting from application of function.
 • Only works with proper trees?  
 
+Simplified definitions with single input:
 (defun simple-mapcar (f l)
   (if (endp l)
       '()
       (cons (funcall f (first l)) (simple-mapcar f (rest l)))) ) ; Build corresponding list structure
 
-(defun simple-rmapcar (f obj)
+Graham style (list of lists):
+(defun simple-rmapcar (fn arg)
+  (if (atom arg)
+      (funcall fn arg)
+      (mapcar #'(lambda (arg) (simple-rmapcar fn arg)) arg))) ; Sublists become args to recursive call. Depth is reduced by one.
+                         ^^^                           ^^^
+Binary tree view:
+(defun simple-rmapcar* (f obj)
   (cond ((null obj) '())
         ((atom obj) (funcall f obj))
         (t (cons (simple-rmapcar f (car obj))      ; Build corresponding tree structure
                  (simple-rmapcar f (cdr obj))))) )
 
+
+
 Skeletal forms:
-(defun copy-list (l)
+(defun copy-cons (c)
+  (cons (first c) (rest c)))
+
+(defun copy-list (l) ; List L is fundamentally a CONS
   (if (endp l)
       '()
       (cons (first l) (copy-list (rest l)))) )
+
+E.g., (mapcar #'identity l)
+
 
 (defun copy-tree (tree)
    (if (atom tree)
        tree
        (cons (copy-tree (car tree))
              (copy-tree (cdr tree)))) )
+
+Graham style:
+(defun copy-tree* (arg)
+  (if (atom arg)
+      arg
+      (mapcar #'(lambda (arg) (copy-tree* arg)) arg)))
+
+E.g., (rmapcar #'identity l)
 
 [For a list of atoms, SIMPLE-RMAPCAR encompasses SIMPLE-MAPCAR's functionality.]
 
@@ -4944,30 +5099,38 @@ Skeletal forms:
 (simple-rmapcar #'(lambda (x) (+ x 2)) '(5 4 3 2 1)) => (7 6 5 4 3)
 (simple-rmapcar #'1+ '(1 2 (3 4 (5) 6) 7 (8 9))) => (2 3 (4 5 (6) 7) 8 (9 10))
 
-Handles dotted pairs
-[*|*]------->[*|*]------->[*|*]--->NIL
- |            |            |
- v            v            v
-[*|*]--->2   [*|*]--->4   [*|*]--->6
- |            |            |
- v            v            v
- 1            3            5
+Graham's version does not handle dotted pairs.
 
-(simple-rmapcar #'1+ '((1 . 2) (3 . 4) (5 . 6))) => ((2 . 3) (4 . 5) (6 . 7))
+SIMPLE-RMAPCAR* does:
+(simple-rmapcar* #'1+ '((1 . 2) (3 . 4) (5 . 6))) => ((2 . 3) (4 . 5) (6 . 7))
 
-[*|*]------->[*|*]------->[*|*]--->NIL
- |            |            |
- v            v            v
-[*|*]--->3   [*|*]--->5   [*|*]--->7
- |            |            |
- v            v            v
- 2            4            6
+[*|*]------->[*|*]------->[*|*]--->NIL     =>      [*|*]------->[*|*]------->[*|*]--->NIL 
+ |            |            |                        |            |            |           
+ v            v            v                        v            v            v           
+[*|*]--->2   [*|*]--->4   [*|*]--->6               [*|*]--->3   [*|*]--->5   [*|*]--->7   
+ |            |            |                        |            |            |           
+ v            v            v                        v            v            v           
+ 1            3            5                        2            4            6           
 
-(simple-rmapcar #'(lambda (x) (+ x 3)) '(1 2 (3 (4 (5) 6) (7)) 8 (9))) => (4 5 (6 (7 (8) 9) (10)) 11 (12))
+       ◯             =>              ◯             
+      / \                           / \            
+     ◯   \                         ◯   \           
+    / \   \                       / \   \          
+   1   2   ◯                     2   3   ◯         
+          / \                           / \        
+         ◯   \                         ◯   \       
+        / \   \                       / \   \      
+       3   4   ◯                     4   5   ◯     
+              / \                           / \    
+             ◯   \                         ◯   \   
+            / \   \                       / \   \  
+           5   6  NIL                    6   7  NIL
+
 Arbitrary depth
-(simple-rmapcar #'(lambda (x) (+ x 5)) '(((( (1) )))) ) => (((((6)))))
+(simple-rmapcar #'(lambda (x) (+ x 3)) '(1 2 (3 (4 (5) 6) (7)) 8 (9))) => (4 5 (6 (7 (8) 9) (10)) 11 (12))
+(simple-rmapcar #'(lambda (x) (+ x 5)) '(((( (1)))) )) => (((((6)))))
 
-Full MAPCAR is harder:
+Full MAPCAR (over multiple lists) is harder:
 (defun mapcar (f &rest args)
   (if (some #'null args)
       '()
@@ -4976,8 +5139,210 @@ Full MAPCAR is harder:
             collect (rest arg) into rests
             finally (return (cons (apply f firsts) (apply #'mapcar f rests)))) ))
 
+(defun mapcar (f &rest args)
+  (cond ((null args) '())
+        ((some #'null args) '())
+        (t (multiple-value-bind (cars cdrs) (firsts-rests args) ; See below for FIRSTS-RESTS
+             (cons (apply #'f cars)
+                   (apply #'mapcar f cdrs)))) ))
 
-(rmapcar f '() '() '())
+
+Full RMAPCAR:
+- Graham MAPCAR across top-level trees (LOLs)
+  - Recursively apply RMAPCAR
+
+(defun rmapcar (fn &rest args) ; Lazy choice of parameter name
+  (if (some #'atom args)
+      (apply fn args)
+      (apply #'mapcar #'(lambda (&rest car-args)
+			  (apply #'rmapcar fn car-args))
+	     args)))
+
+Examples:
+A.
+(mapcar #'+ '(1 2) '(3 4))
+(+ 1 3) (2) (4)
+(+ 2 4) () ()
+
+B.
+(mapcar #'+ '(1 2) '(3 4 5))
+(+ 1 3) (2) (4 5)
+(+ 2 4) () (5) <-- One sublist is empty: terminate
+
+C.
+(rmapcar #'+ '(1 2) '(3 4))
+-> (mapcar #'F '(1 2) '(3 4))
+(F 1 3) (2) (4)
+(F 2 4) () ()
+
+What is F?
+(rmapcar #'+ 1 3)
+(rmapcar #'+ 2 4)
+
+D.
+(rmapcar #'+ '(1 (2)) '(3 (4)))
+-> (mapcar #'F '(1 (2)) '(3 (4))) => (4 (6))
+(F 1 3) ((2)) ((4))
+(F '(2) '(4)) () ()
+
+(rmapcar #'+ 1 3) => 4
+(rmapcar #'+ '(2) '(4))
+-> (mapcar #'F '(2) '(4)) => (6)
+
+(F 2 4) () ()
+
+(rmapcar #'+ 2 4) => 6
+
+E. Same shape trees
+(rmapcar #'list '(1 ((2) 3) (4)) '(:a ((:b) :c) (:d)))
+-> (mapcar #'F '(1 ((2) 3) (4)) '(:a ((:b) :c) (:d))) => ((1 :a) (((2 :b)) (3 :c)) ((4 :d)))
+(F 1 :a) (((2) 3) (4)) (((:b) :c) (:d))
+  (rmapcar #'list 1 :a) => (1 :a)
+
+(F ((2) 3) ((:b) :c)) ((4)) ((:d))
+  (rmapcar #'list '((2) 3) '((:b) :c))
+  -> (mapcar #'F '((2) 3) '((:b) :c)) => (((2 :b)) (3 :c))
+  (F (2) (:b)) (3) (:c)
+    (rmapcar #'list '(2) '(:b))
+    -> (mapcar #'F '(2) '(:b)) => ((2 :b))
+    (F 2 :b) () () => (2 :b)
+  (F 3 :c) () () => (3 :c)
+
+(F (4) (:d)) () ()
+  (rmapcar #'list '(4) '(:d))
+  -> (mapcar #'F '(4) '(:d)) => ((4 :d))
+  (F 4 :d) () () => (4 :d)
+
+F. Different shape trees
+(rmapcar #'list '(1 ((2)) (4)) '(:a ((:b) :c) (:d)))
+-> (mapcar #'F '(1 ((2)) (4)) '(:a ((:b) :c) (:d))) => ((1 :a) (((2 :b))) ((4 :d)))
+(F 1 :a) (((2)) (4)) (((:b) :c) (:d))
+  (rmapcar #'list 1 :a) => (1 :a)
+
+(F ((2)) ((:b) :c)) ((4)) ((:d))
+  (rmapcar #'list '((2)) '((:b) :c))
+  -> (mapcar #'F '((2)) '((:b) :c)) => (((2 :b)))
+  (F (2) (:b)) () (:c)  <-- One sublist empty: terminate
+    (rmapcar #'list '(2) '(:b))
+    -> (mapcar #'F '(2) '(:b)) => ((2 :b))
+    (F 2 :b) () () => (2 :b)
+
+(F (4) (:d)) () ()
+  (rmapcar #'list '(4) '(:d))
+  -> (mapcar #'F '(4) '(:d)) => ((4 :d))
+  (F 4 :d) () () => (4 :d)
+
+
+Alternative.
+TREE-MAP handles dotted trees.
+
+(defun tree-map (f &rest trees)
+  (cond ((null trees) '()) ; Pathological initial case: (tree-map f). Also recursive case where trees are not same size.
+        ((some #'null trees) '())
+        ((some #'atom trees) (apply f trees))
+        (t (multiple-value-bind (cars cdrs) (firsts-rests trees)
+             (cons (apply #'tree-map f cars)
+                   (apply #'tree-map f cdrs)))) ))
+
+(defun firsts-rests (lol)
+  "Traverse LOL, a list of lists, and collect the first elements of each as well as the tails of each."
+  (labels ((collect-heads-tails (lol heads tails)
+             (cond ((null lol) (values (elements heads) (elements tails)))
+                   (t (destructuring-bind (first . rest) lol
+                        (cond ((atom first) (values '() '())) ; No CAR/CDR for this sublist. Results are meaningless. Abort.
+                              (t (destructuring-bind (head . tail) first
+                                   (enqueue heads head)
+                                   (cond ((null tail) (collect-heads rest heads)) ; Encountering a single-elt list anywhere means all tails are discarded.
+                                         (t (enqueue tails tail)
+                                            (collect-heads-tails rest heads tails)))) )))) ))
+           (collect-heads (lol heads)
+             (cond ((null lol) (values (elements heads) '()))
+                   (t (destructuring-bind (first . rest) lol
+                        (cond ((atom first) (values '() '())) ; No CAR/CDR for this sublist. Results are meaningless. Abort.
+                              (t (destructuring-bind (head . tail) first
+                                   (declare (ignore tail))
+                                   (enqueue heads head)
+                                   (collect-heads rest heads)))) )))) )
+    (collect-heads-tails lol (make-linked-queue) (make-linked-queue))))
+
+(defun firsts-rests* (lol)
+  (loop for list in lol
+        collect (first list) into firsts
+        collect (rest list) into rests
+        finally (return (values firsts rests))))
+
+Uniform structure
+(firsts-rests '((a b c) (:d :e :f) (1 2 3) (#\x #\y #\z))) => (A :D 1 #\x); ((B C) (:E :F) (2 3) (#\y #\z))
+Different structures
+(firsts-rests '((a b c) (:d :e :f) (1 2) (#\x #\y #\z))) => (A :D 1 #\x); ((B C) (:E :F) (2) (#\y #\z))
+
+(firsts-rests '((a (b c)) (:d (:e :f)) (1 (2 3)) (#\x (#\y #\z)))) => (A :D 1 #\x); (((B C)) ((:E :F)) ((2 3)) ((#\y #\z)))
+(firsts-rests '((a (b c)) (:d (:e :f)) (1 2 3) (#\x (#\y #\z)))) => (A :D 1 #\x); (((B C)) ((:E :F)) (2 3) ((#\y #\z)))
+
+Next pass
+(firsts-rests '(((B C)) ((:E :F)) (2 3) ((#\y #\z)))) => ((B C) (:E :F) 2 (#\y #\z)); NIL
+(firsts-rests* '(((B C)) ((:E :F)) (2 3) ((#\y #\z)))) => ((B C) (:E :F) 2 (#\y #\z)); (NIL NIL (3) NIL)
+
+Same-shaped trees:
+(a (b c))
+
+[*|*]--->[*|*]--->NIL
+ |        |
+ v        v
+ A       [*|*]--->[*|*]--->NIL
+          |        |
+          v        v
+          B        C
+
+(1 (2 3))
+
+[*|*]--->[*|*]--->NIL
+ |        |
+ v        v
+ 1       [*|*]--->[*|*]--->NIL
+          |        |
+          v        v
+          2        3
+
+       ◯                    ◯       
+      / \                  / \                                             
+     /   \                /   \                                            
+    A     ◯              1     ◯   
+         / \                  / \  
+        /   \                /   \ 
+       B     C              2     3   
+
+Different shape:
+(1 (2))
+
+[*|*]--->[*|*]--->NIL
+ |        |
+ v        v
+ 1       [*|*]--->NIL
+          |
+          v
+          2
+
+   ◯      
+  / \     
+ /   \    
+1     ◯   
+     /
+    /
+   2
+
+
+
+(rmapcar #'list '() '() '()) => (NIL NIL NIL)
+(tree-map #'list '() '() '()) => NIL
+
+
+
+
+
+
+
+
 ----------------------------------------------------------------------------
 240514 火
 4 types of closures.
