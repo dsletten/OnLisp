@@ -5399,7 +5399,8 @@ f(x) = x³
        (funcall #'(lambda (&rest args) (funcall #'f (apply #'g args)))
                 (apply #'h args)))
 
-(reduce #'compose (list #'f #'g #'h))
+The above represents (f∘g)∘h. Equivalently:
+(f∘g)∘h = (reduce #'compose (list #'f #'g #'h))     <-- Key to generalizing to N functions
 
 Test associativity:
 (loop for i from -1000 to 1000 unless (= (f∘g∘h i) (f∘g∘h* i)) do (print i)) => NIL
@@ -5414,6 +5415,7 @@ General definition:
               fs)))
 
 Redefine with X-rays:
+Replace calls to APPLY and FUNCALL with stubs that print their args.
 (defun func (f arg)
   (print (list 'func arg))
   (funcall f arg))
@@ -5463,15 +5465,21 @@ Only the innermost (last function) really needs APPLY in order to handle multipl
   serves as the single argument to all outer functions.
 
 Thus, the expansion could be simplified:
->> #'(lambda (&rest args)
-       (funcall #'(lambda (&rest args) (funcall #'f (apply #'g args))) (apply #'h args)))
+#'(lambda (&rest args)
+    (funcall #'(lambda (&rest args) (funcall #'f (apply #'g args))) (apply #'h args)))
 
+                             ||
+                             ||
+                             \/
 
->> #'(lambda (&rest args)
-       (funcall #'(lambda (x) (funcall #'f (funcall #'g x))) (apply #'h args)))
-                          ^^^               ^^^^^^^           ^^^^^
-
+#'(lambda (&rest args)
+    (funcall #'(lambda (x)          (funcall #'f (funcall #'g x))) (apply #'h args)))
+                       ^^^                        ^^^^^^^     ^     ^^^^^
+But FUNCALL and APPLY are nearly equivalent:
 CLHS: (funcall function arg1 arg2 ...) ≡ (apply function (list arg1 arg2 ...))
+
+This rewrite may be cleaner by some criterion, but it disrupts the simplicity of the REDUCE
+expression in COMPOSE above.
 
 Nothing really wrong with the current definition.
 -------------------------------------------
@@ -5479,8 +5487,54 @@ Using a macro we could condense things even further:
 #'(lambda (&rest args)
     (funcall #'f (funcall #'g (apply #'h args))))
 
+Or even:
 #'(lambda (&rest args)
     (f (g (apply #'h args))))
+
+(defmacro compose (&rest fs)
+  (let ((args (gensym)))
+    (labels ((compose-fns (fs)
+               (if (singlep fs)
+                   `(apply ,(first fs) ,args)
+                   (destructuring-bind (f . more) fs
+                     (list (second f) (compose-fns more)))) ))
+      (cond ((null fs) #'identity)
+            ((singlep fs) (first fs))
+            (t `#'(lambda (&rest ,args) ,(compose-fns fs)))) )))
+
+Superficially it seems to work the same as the function version:
+(macroexpand-1 '(compose #'f #'g #'h))
+#'(LAMBDA (&REST #:G229) (F (G (APPLY #'H #:G229))))
+
+(funcall (compose #'f #'g #'h) 8)
+4913
+
+Handles function literals too!
+(macroexpand-1 '(compose #'(lambda (x) (expt x 3)) #'(lambda (x) (1+ x)) #'(lambda (x) (* 2 x))))
+#'(LAMBDA (&REST #:G231)
+    ((LAMBDA (X) (EXPT X 3))
+     ((LAMBDA (X) (1+ X)) (APPLY #'(LAMBDA (X) (* 2 X)) #:G231))))
+
+(funcall (compose #'(lambda (x) (expt x 3)) #'(lambda (x) (1+ x)) #'(lambda (x) (* 2 x))) 8)
+4913
+
+
+(macroexpand-1 '(compose #'sqrt #'- (partial* #'expt 2)))
+#'(LAMBDA (&REST #:G234) (SQRT (- (APPLY (PARTIAL* #'EXPT 2) #:G234))))
+
+(funcall (compose #'sqrt #'- (partial* #'expt 2)) 5)
+#C(0.0 5.0)
+
+But it isn't foolproof:
+(macroexpand-1 '(compose #'sqrt #'- (partial* #'expt 2) #'1+))
+#'(LAMBDA (&REST #:G235) (SQRT (- (#'EXPT (APPLY #'1+ #:G235)))))                        <-- Oops. Partial function not built yet...
+
+
+Furthermore, can't use COMPOSE itself as H.O. function:
+- Args to COMPOSE (macro) must be known at compile time
+(let* ((fns (list #'f #'g #'h))
+       (f∘g∘h (apply #'compose fns)))
+  (funcall f∘g∘h 8))
 
 Preferable to use a function?
 -------------------------------------------
@@ -5495,6 +5549,14 @@ Graham's version:
                     :initial-value (apply fn1 args))))
       #'identity))
 -------------------------------------------
+Handling functions that return multiple values
+
+Binary operator:
+(defun multiple-value-compose (f g)
+  #'(lambda (&rest args)
+      (apply f (multiple-value-list (apply g args)))) )
+
+General-purpose:
 (defun multiple-value-compose (&rest fs)
   (if (null fs)
       #'identity
@@ -5502,11 +5564,6 @@ Graham's version:
                   #'(lambda (&rest args)
                       (apply f (multiple-value-list (apply g args)))) )
               fs)))
-
-(defun multiple-value-compose (f g)
-  #'(lambda (&rest args)
-      (apply f (multiple-value-list (apply g args)))) )
-
 
 (funcall (multiple-value-compose #'mod #'floor) 11 3) => 1
 (funcall (multiple-value-compose #'+ #'floor) 11 3) => 5
@@ -5561,7 +5618,7 @@ Clojure:
     ([x y] (not (f x y)))
     ([x y & zs] (not (apply f x y zs)))))
 
-
+Function composition in Ruby:
 https://en.wikipedia.org/wiki/Function_composition_(computer_science)#Ruby
 f = proc{|x| x + 2}
 g = proc{|x| x * 3}
