@@ -5336,11 +5336,237 @@ Different shape:
 (rmapcar #'list '() '() '()) => (NIL NIL NIL)
 (tree-map #'list '() '() '()) => NIL
 
+Chapter 5
+============================================================================
+☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆
+============================================================================
+250625 水
+https://en.wikipedia.org/wiki/Function_composition
+
+g: A -> B
+f: B -> C
+f∘g: A -> C
+
+General case:
+g : (A₁ X ... X Aₙ) -> B
+f: B -> C
+f∘g: (A₁ X ... X Aₙ) -> C
+
+COMPOSE as binary operator:
+(defun compose (f g)
+  #'(lambda (&rest args)
+      (funcall f (apply g args))))
+
+(abs (expt x y))
+
+(funcall (compose #'abs #'expt) -3 5) => 243
+(funcall #'(lambda (&rest args) (funcall #'abs (apply #'expt args))) 2 9) => 512
+-------------------------------------------
+Compose arbitrary number of functions? 
+
+Example:
+h(x) = 2x
+g(x) = x + 1
+f(x) = x³
+
+(f∘g∘h)(x) = (2x + 1)³
+
+(Composition is associative: (f∘g)∘h = f∘(g∘h))
+
+(defun f (x) (expt x 3))
+(defun g (x) (1+ x))
+(defun h (x) (* 2 x))
+
+(setf (symbol-function 'f∘g) (compose #'f #'g))
+> #'(lambda (&rest args)
+      (funcall #'f (apply #'g args)))
+
+(setf (symbol-function 'g∘h) (compose #'g #'h))
+> #'(lambda (&rest args)
+      (funcall #'g (apply #'h args)))
+
+(setf (symbol-function 'f∘g∘h) (compose #'f #'g∘h))
+> #'(lambda (&rest args)
+      (funcall #'f (apply #'g∘h args)))
+>> #'(lambda (&rest args)
+       (funcall #'f
+                (apply #'(lambda (&rest args) (funcall #'g (apply #'h args))) args)))
+
+(setf (symbol-function 'f∘g∘h*) (compose #'f∘g #'h))
+> #'(lambda (&rest args)
+      (funcall #'f∘g (apply #'h args)))
+>> #'(lambda (&rest args)
+       (funcall #'(lambda (&rest args) (funcall #'f (apply #'g args)))
+                (apply #'h args)))
+
+(reduce #'compose (list #'f #'g #'h))
+
+Test associativity:
+(loop for i from -1000 to 1000 unless (= (f∘g∘h i) (f∘g∘h* i)) do (print i)) => NIL
+
+General definition:
+(defun compose (&rest fs)
+  (if (null fs)
+      #'identity
+      (reduce #'(lambda (f g)
+                  #'(lambda (&rest args)
+                      (funcall f (apply g args))))
+              fs)))
+
+Redefine with X-rays:
+(defun func (f arg)
+  (print (list 'func arg))
+  (funcall f arg))
+
+(defun app (f args)
+  (print (list 'app args))
+  (apply f args))
+
+(defun compose (&rest fs)
+  (if (null fs)
+      #'identity
+      (reduce #'(lambda (f g)
+                  #'(lambda (&rest args)
+                      (func f (app g args))))
+              fs)))    ^^^^    ^^^
+
+(funcall (compose #'f #'g #'h) 8)
+
+(APP (8)) <- h(8)
+(FUNC 16) 
+(APP (16)) <- g(h(8))
+(FUNC 17) 
+4913 <- f(g(h(8)))
 
 
+Wikipedia examples:
+I. Symbol SET -> SET!
+
+(funcall (compose #'intern (partial #'format nil "~A!") #'symbol-name) 'set)
+(APP (SET)) 
+(FUNC "SET") 
+(APP ("SET")) 
+(FUNC "SET!") 
+SET!
+
+II. sqrt(-x²)
+
+(funcall (compose #'sqrt #'- (partial* #'expt 2)) 5)
+(APP (5)) 
+(FUNC 25) 
+(APP (25)) 
+(FUNC -25) 
+#C(0.0 5.0)
+-------------------------------------------
+Only the innermost (last function) really needs APPLY in order to handle multiple args.
+• This innermost function and all subsequent functions return a single value, which then
+  serves as the single argument to all outer functions.
+
+Thus, the expansion could be simplified:
+>> #'(lambda (&rest args)
+       (funcall #'(lambda (&rest args) (funcall #'f (apply #'g args))) (apply #'h args)))
 
 
+>> #'(lambda (&rest args)
+       (funcall #'(lambda (x) (funcall #'f (funcall #'g x))) (apply #'h args)))
+                          ^^^               ^^^^^^^           ^^^^^
 
+CLHS: (funcall function arg1 arg2 ...) ≡ (apply function (list arg1 arg2 ...))
+
+Nothing really wrong with the current definition.
+-------------------------------------------
+Using a macro we could condense things even further:
+#'(lambda (&rest args)
+    (funcall #'f (funcall #'g (apply #'h args))))
+
+#'(lambda (&rest args)
+    (f (g (apply #'h args))))
+
+Preferable to use a function?
+-------------------------------------------
+Graham's version:
+(defun compose (&rest fns)
+  (if fns
+      (let ((fn1 (car (last fns)))  <-- Forgot to use his own LAST1 function: (last1 fns)
+            (fns (butlast fns)))
+        #'(lambda (&rest args)
+            (reduce #'funcall fns   <-- Composition occurs each time function is called!
+                    :from-end t
+                    :initial-value (apply fn1 args))))
+      #'identity))
+-------------------------------------------
+(defun multiple-value-compose (&rest fs)
+  (if (null fs)
+      #'identity
+      (reduce #'(lambda (f g)
+                  #'(lambda (&rest args)
+                      (apply f (multiple-value-list (apply g args)))) )
+              fs)))
+
+(defun multiple-value-compose (f g)
+  #'(lambda (&rest args)
+      (apply f (multiple-value-list (apply g args)))) )
+
+
+(funcall (multiple-value-compose #'mod #'floor) 11 3) => 1
+(funcall (multiple-value-compose #'+ #'floor) 11 3) => 5
+(funcall (multiple-value-compose #'expt #'truncate) 45 10) => 1024
+(funcall (multiple-value-compose #'expt #'truncate) 4.5d0) => 2.0d0
+
+This function handles all of the simpler cases above as well:
+(funcall (multiple-value-compose #'abs #'expt) -3 5) => 243
+(funcall (multiple-value-compose #'f #'g #'h) 8) => 4913
+(funcall (multiple-value-compose #'intern (partial #'format nil "~A!") #'symbol-name) 'foo) => FOO!
+(funcall (multiple-value-compose #'sqrt #'- (partial* #'expt 2)) 5) => #C(0.0 5.0)
+
+More examples
+(funcall (compose #'length #'remove-if-not) #'evenp (loop for i from 1 to 10 collect i)) => 5 ; Innermost function takes 2 args
+(funcall (compose #'first #'rest #'rest #'rest #'rest) '(a b c d e f g)) => E ; AKA FIFTH
+(funcall (compose #'sqrt #'abs #'+) -1 -2 -3 -4 -5) => 3.8729835 ; Innermost function: 5 args
+(mapcar (compose (partial* #'< 10000) #'abs) '(23 12345 -80 -80000)) => (T NIL T NIL)
+-------------------------------------------
+Define COMPLEMENT in terms of COMPOSE
+(defun complement (pred)
+  (compose #'not pred))
+
+Clojure:
+(defn comp
+  "Takes a set of functions and returns a fn that is the composition
+  of those fns.  The returned fn takes a variable number of args,
+  applies the rightmost of fns to the args, the next
+  fn (right-to-left) to the result, etc."
+  {:added "1.0"
+   :static true}
+  ([] identity)
+  ([f] f)
+  ([f g] 
+     (fn 
+       ([] (f (g)))
+       ([x] (f (g x)))
+       ([x y] (f (g x y)))
+       ([x y z] (f (g x y z)))
+       ([x y z & args] (f (apply g x y z args)))))
+  ([f g & fs]
+     (reduce1 comp (list* f g fs))))
+
+(defn complement
+  "Takes a fn f and returns a fn that takes the same arguments as f,
+  has the same effects, if any, and returns the opposite truth value."
+  {:added "1.0"
+   :static true}
+  [f] 
+  (fn 
+    ([] (not (f)))
+    ([x] (not (f x)))
+    ([x y] (not (f x y)))
+    ([x y & zs] (not (apply f x y zs)))))
+
+
+https://en.wikipedia.org/wiki/Function_composition_(computer_science)#Ruby
+f = proc{|x| x + 2}
+g = proc{|x| x * 3}
+(f << g).call(3) # -> 11; identical to f(g(3))
+(f >> g).call(3) # -> 15; identical to g(f(3))
 
 
 ----------------------------------------------------------------------------
