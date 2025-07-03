@@ -5549,6 +5549,56 @@ Graham's version:
                     :initial-value (apply fn1 args))))
       #'identity))
 -------------------------------------------
+Performance
+
+** Hardwired
+(flet ((f (x) (expt x 3))
+       (g (x) (1+ x))
+       (h (x) (* 2 x)))
+  (let ((f∘g∘h #'(lambda (x) (f (g (h x)))) ))
+    (time
+      (loop for i from 1 to 1000000 do (funcall f∘g∘h i)))) )
+Evaluation took:
+  0.000 seconds of real time
+  0.000180 seconds of total run time (0.000153 user, 0.000027 system)
+  100.00% CPU
+  569,522 processor cycles
+  0 bytes consed
+  
+NIL
+
+** Mine
+(flet ((f (x) (expt x 3))
+       (g (x) (1+ x))
+       (h (x) (* 2 x)))
+  (let ((f∘g∘h (compose #'f #'g #'h)))
+    (time
+      (loop for i from 1 to 1000000 do (funcall f∘g∘h i)))) )
+Evaluation took:
+  0.012 seconds of real time
+  0.012374 seconds of total run time (0.008352 user, 0.004022 system)
+  100.00% CPU
+  39,456,382 processor cycles
+  657 page faults
+  2,686,992 bytes consed
+
+** Graham's
+(flet ((f (x) (expt x 3))
+       (g (x) (1+ x))
+       (h (x) (* 2 x)))
+  (let ((f∘g∘h (compose #'f #'g #'h)))
+    (time
+      (loop for i from 1 to 1000000 do (funcall f∘g∘h i)))) )
+Evaluation took:
+  0.028 seconds of real time
+  0.028539 seconds of total run time (0.028410 user, 0.000129 system)
+  [ Real times consist of 0.001 seconds GC time, and 0.027 seconds non-GC time. ]
+  103.57% CPU
+  90,961,333 processor cycles
+  34,636,688 bytes consed
+  
+NIL
+-------------------------------------------
 Handling functions that return multiple values
 
 Binary operator:
