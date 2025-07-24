@@ -60,6 +60,9 @@ Possible definition:
 CLHS says:
 (funcall function arg1 arg2 ...)  ==  (apply function arg1 arg2 ... nil)  ==  (apply function (list arg1 arg2 ...))
 
+See MULTIPLE-VALUE-CALL below 
+
+
 (No need for FUNCALL in Scheme/Clojure)
 (defun foo (x)
   (+ x 9))
@@ -5633,7 +5636,7 @@ Furthermore, can't use COMPOSE itself as H.O. function:
 
 Preferable to use a function?
 -------------------------------------------
-Graham's version:
+Graham's version: [On Lisp 1994]
 (defun compose (&rest fns)
   (if fns
       (let ((fn1 (car (last fns)))  <-- Forgot to use his own LAST1 function: (last1 fns)
@@ -5646,6 +5649,14 @@ Graham's version:
 
 Graham - process at runtime. Must fold right.
 Me - compile nested LAMBDA. Normal function evaluation ensures innermost first.
+
+Graham (ANSI Common Lisp 1996 110 页):
+(defun compose (&rest fns)
+  (destructuring-bind (fn1 . rest) (reverse fns)
+    #'(lambda (&rest args)
+        (reduce #'(lambda (v f) (funcall f v)) <-- Left fold. Must flip args around from above right fold.
+                rest
+                :initial-value (apply fn1 args)))) )
 -------------------------------------------
 Performance
 
@@ -5738,7 +5749,7 @@ General-purpose:
       #'identity
       (reduce #'(lambda (f g)
                   #'(lambda (&rest args)
-                      (apply f (multiple-value-list (apply g args)))) )
+                      (multiple-value-call f (apply g args)))) ; Improved due to Alexandria
               fs)))
 
 (funcall (multiple-value-compose #'mod #'floor) 11 3) => 1
@@ -5755,6 +5766,9 @@ This function handles all of the simpler cases above as well:
 Define COMPLEMENT in terms of COMPOSE
 (defun complement (pred)
   (compose #'not pred))
+
+(partial #'compose #'not)
+
 
 Clojure:
 (defn comp
@@ -5794,6 +5808,656 @@ f = proc{|x| x + 2}
 g = proc{|x| x * 3}
 (f << g).call(3) # -> 11; identical to f(g(3))
 (f >> g).call(3) # -> 15; identical to g(f(3))
+----------------------------------------------------------------------------
+250710 木
+Build a function that applies one function or another depending on result of a predicate:
+
+Example
+Given a list of strings and symbols, map the symbols to lowercase strings of their names. Take strings "as is":
+(mapcar #'(lambda (s) (if (symbolp s) (string-downcase (symbol-name s)) s)) '(a "foo" bar "PUNG"))
+("a" "foo" "bar" "PUNG")
+
+(mapcar (iffn #'symbolp (compose #'string-downcase #'symbol-name)) '(a "foo" bar "PUNG"))
+("a" "foo" "bar" "PUNG")
+
+[Graham FIF]
+;(defun iffn (if then &optional (else (constantly nil)))
+(defun iffn (if then &optional (else #'identity)) ; More useful??
+  #'(lambda (x)
+      (if (funcall if x)
+	  (funcall then x)
+	  (funcall else x))))
+
+More (contrived?) examples
+I. Given a list of integers, remove even numbers when negative, odd numbers when positive:
+(remove-if (iffn #'evenp #'minusp #'plusp) (loop for i from -5 to 5 collect i))
+(-5 -3 -1 0 2 4)
+
+II. Given a list of numbers, take integers "as is", decompose floats into integer/fractional parts:
+(mapcar (iffn #'integerp #'identity (multiple-value-compose #'list #'truncate)) (list 1 pi (sqrt 4) 6 (sqrt 8d0) 18/2))
+(1 (3 0.14159265358979312d0) (2 0.0) 6 (2 0.8284271247461903d0) 9)
+or
+(mapcar (iffn (complement #'integerp) (multiple-value-compose #'list #'truncate)) (list 1 pi (sqrt 4) 6 (sqrt 8d0) 18/2))
+
+III. Given a list of people, merely select first name for Ramones but collect first/last name for regular people:
+(defclass person ()
+  ((first-name :reader first-name :initarg :first)
+   (last-name :reader last-name :initarg :last)))
+
+(defclass ramone (person) ())
+
+(defmethod initialize-instance :after ((r ramone) &rest initargs)
+  (declare (ignore initargs))
+  (with-slots (last-name) r
+    (setf last-name "Ramone")))
+
+(defvar *andy* (make-instance 'person :first "Andy" :last "Warhol"))
+
+(defvar *joey* (make-instance 'ramone :first "Joey"))
+(defvar *dee-dee* (make-instance 'ramone :first "Dee Dee"))
+(defvar *tommy* (make-instance 'ramone :first "Tommy"))
+(defvar *johnny* (make-instance 'ramone :first "Johnny"))
+
+(mapcar (iffn (partial* #'typep 'ramone) #'first-name (multiple-value-compose #'append (juxtapose #'first-name #'last-name))) (list *joey* *andy* *dee-dee*))
+("Joey" ("Andy" "Warhol") "Dee Dee")
+-------------------------------------------
+Compute the conjunction or disjunction of a number of predicates
+(and (integerp x) (plusp x) (evenp x))
+(or (stringp x) (symbolp x) (numberp x))
+
+Since AND and OR are macros, can't simply use APPLY/REDUCE, etc...
+
+Graham defines the atrociously named FINT and FUN functions:
+(defun fint (fn &rest fns)
+  (if (null fns)
+      fn
+      (let ((chain (apply #'fint fns)))
+        #'(lambda (x) 
+            (and (funcall fn x) (funcall chain x))))))
+
+(defun fun (fn &rest fns)
+  (if (null fns)
+      fn
+      (let ((chain (apply #'fun fns)))
+        #'(lambda (x)
+            (or (funcall fn x) (funcall chain x))))))
+
+(mapcar (fint #'integerp #'plusp #'evenp) '(-2 -1 0 1 2))
+(NIL NIL NIL NIL T)
+(mapcar (fun #'stringp #'symbolp #'numberp) '(a :a #\a "A" #xA))
+(T T NIL T T)
+
+Pro's
+• One required predicate. Others allowed.
+• Both short-circuit as AND/OR do.
+• Entire function built at compile-time
+• Preserve semantics of AND/OR WRT multiple values:
+    (let ((x 8.2)) (or (truncate x))) => 8; 0.19999981                    
+    (let ((x 8.2)) (funcall (fun #'truncate) x)) => 8; 0.19999981         
+    (let ((x 8.2)) (or (truncate x) (integerp x))) => 8                   
+    (let ((x 8.2)) (funcall (fun #'truncate #'integerp) x)) => 8          
+                                                                          
+    (let ((x 8.2)) (and (truncate x))) => 8; 0.19999981                   
+    (let ((x 8.2)) (funcall (fint #'truncate) x)) => 8; 0.19999981        
+    (let ((x 8.2)) (and (realp x) (truncate x))) => 8; 0.19999981         
+    (let ((x 8.2)) (funcall (fint #'realp #'truncate) x)) => 8; 0.19999981
+
+2 Deficiencies
+1. Dumb names
+2. Only single-arity predicates
+
+1. Clojure has `every-pred' and `some-fn' functions:
+• Slightly better names but weird semantics (See below)
+
+(map (every-pred integer? pos? even?) '(-2 -1 0 1 2))
+(false false false false true)
+(map (some-fn string? symbol? number?) '(a :a \a "A" 16rA))
+(true false false true true)
+
+2. Can't do something like this:
+Predicate with 2 args
+(and (> x y) (zerop (mod x y)))
+
+(funcall (fint #'> (compose #'zerop #'mod)) 4 3)
+  invalid number of arguments: 2
+
+
+Fixing Graham's names:
+(defun every-pred (p &rest ps)
+  (if (null ps)
+      p
+      (let ((chain (apply #'every-pred ps)))
+        #'(lambda (x) (and (funcall p x) (funcall chain x)))) ))
+
+(defun some-pred (p &rest ps)
+  (if (null ps)
+      p
+      (let ((chain (apply #'some-pred ps)))
+        #'(lambda (x) (or (funcall p x) (funcall chain x)))) ))
+
+Still doesn't address 2nd point above.
+
+Clojure's `every-pred' and `some-fn' take an odd turn. Rather than supporting multiple args, they
+simply apply the compound predicate to single args in turn:
+
+Expected:
+((every-pred > #(zero? (mod %1 %2))) 4 2) ; Not 2-arg predicate
+Wrong number of args (1) passed to: eval8025/fn--8026
+
+Actual:
+((every-pred integer? pos? even?) -2 -1 0 1 2) ; Repeatedly apply 1-arg predicate
+false
+((some-fn integer? pos? even?) -2 -1 0 1 2)
+true
+-------------------------------------------
+In ANSI Common Lisp, Graham points out that the Lisp-influenced language Dylan defined `conjoin' and `disjoin'
+functions (ACL 110 页)
+
+They solve the 2nd issue above.
+
+He gives the corresponding Common Lisp versions:
+[Same fundamental design as his FINT/FUN]
+(defun disjoin (fn &rest fns)
+  (if (null fns)
+      fn
+      (let ((disj (apply #'disjoin fns)))
+        #'(lambda (&rest args)
+            (or (apply fn args) (apply disj args)))) ))
+
+(defun conjoin (fn &rest fns)
+  (if (null fns)
+      fn
+      (let ((conj (apply #'conjoin fns)))
+        #'(lambda (&rest args)
+            (and (apply fn args) (apply conj args)))) ))
+
+
+Multiple args passed to predicate
+(funcall (conjoin #'<) 2 3) => T
+(funcall (conjoin #'> (compose #'zerop #'mod)) 4 2) => T
+(funcall (conjoin #'> (compose #'zerop #'mod)) 4 1) => T
+(funcall (conjoin #'> (compose #'zerop #'mod)) 4 4) => NIL
+(funcall (conjoin #'> (compose #'zerop #'mod)) 4 3) => NIL
+
+Increasingly stricter criteria:
+(funcall (conjoin #'>) 3 2) => T
+(funcall (conjoin #'> (compose #'zerop #'mod)) 3 2) => NIL
+-------------------------------------------
+A different approach (inspired by Clojure):
+
+Typical view of EVERY:
+(every f args) ; Is F true for all ARGS?
+(every #'evenp '(1 2 3 4 5))
+           ^         ^
+           |         |
+           |         +-- Data
+           +-- Predicate
+
+Invert this so that the sequence of ARGS consists of the predicates:
+(every #'(lambda (p) (funcall p -2)) (list #'integerp #'plusp #'evenp)) => NIL 
+                                 ^      ^
+                                 |      |
+                                 |      +-- Multiple tests
+                                 +-- Single datum
+(every #'(lambda (p) (funcall p 2)) (list #'integerp #'plusp #'evenp)) => T
+
+Generalize:
+(defun disjoin (&rest ps)
+  #'(lambda (&rest args)
+      (some #'(lambda (p) (apply p args)) ps)))
+
+(defun conjoin (&rest ps)
+  #'(lambda (&rest args)
+      (every #'(lambda (p) (apply p args)) ps)))
+
+Achieve the Clojure behavior the normal way:
+(every (conjoin #'> (compose #'zerop #'mod)) '(4 9 18) '(2 3 6)) => T
+          ^                                    ^         ^
+          |                                    |         |
+          |                                    +---------+-- Potentially multiple sequences
+          +-- Compound predicate
+[This example takes both perspectives. Internally, the function built by CONJOIN
+ uses EVERY to iterate across both supplied predicates. Then the explicit EVERY iterates
+ pairwise over the 2 lists of numbers. Effectively:
+(every #'(lambda (&rest args) (every #'(lambda (p) (apply p args)) (list #'> (compose #'zerop #'mod)))) '(4 9 18) '(2 3 6))]
+   ^                             ^
+   |                             |
+   |                             +-- Iterate over predicates
+   +-- Iterate over seq(s) of values
+-------------------------------------------
+Note that this version of CONJOIN has slightly different semantics than Graham's due
+to the underlying behavior of EVERY vs. AND.
+
+There are four sequence functions that allow us to examine 1+ sequences with respect to some predicate:
+[https://www.lispworks.com/documentation/HyperSpec/Body/f_everyc.htm]
+EVERY/SOME/NOTANY/NOTEVERY
+EVERY and SOME are fundamental. The other two could be derived.
+(every #'evenp '(1 2 3 4)) => NIL
+(some #'evenp '(1 2 3 4)) => T
+(some #'< '(1 2 3) '(2 3 4)) => T
+
+CLHS says:
+(notany predicate sequence*) ≡ (not (some predicate sequence*))
+(notevery predicate sequence*) ≡ (not (every predicate sequence*))
+
+Common Lisp exhibits a quirk here:
+• EVERY returns true if the predicate is true when applied to all sequence elts.
+• SOME returns the value returned by the predicate as soon as it is non-nil.
+In other words, EVERY is itself a predicate, simply returning T or NIL. But SOME is
+a pseudo-predicate in that SOME may return a "true" value other than T:
+(some #'identity '(nil nil 5 nil)) => 5
+
+[Due to this difference in semantics, Clojure stubbornly refuses to consider `some' a predicate.
+ In Clojure, EVERY takes on the badge of a respectable predicate: every? but SOME is relegated
+ to just `some'. This decision in turn opened the door to the entirely unrelated `some?' function
+ resulting in no end of confusion. We see the same distinction between the `every-pred' and `some-fn' functions.]
+
+This means that the behavior of SOME is more consistent with the behavior of OR, whereas
+EVERY behaves differently from AND.
+
+For example:
+(or (char-upcase #\a) (char-upcase #\P)) => #\A
+(some #'char-upcase '(#\a #\P)) => #\A
+
+(and (char-upcase #\a) (char-upcase #\P)) => #\P; Value of last form
+(every #'char-upcase '(#\a #\P)) => T ; Boolean
+
+Consequently, building CONJOIN on top of EVERY produces slightly different results
+than Graham's illustration which relies directly on AND:
+(map 'list (conjoin #'alpha-char-p #'lower-case-p #'char-upcase) "Is this not pung?")
+(NIL T NIL T T T T NIL T T T NIL T T T T NIL)
+vs. Graham's version
+(NIL #\S NIL #\T #\H #\I #\S NIL #\N #\O #\T NIL #\P #\U #\N #\G NIL)
+
+[Since SOME is fundamentally more similar to OR, the difference doesn't show up in DISJOIN]
+
+Go crazy!
+(mapcar (conjoin #'integerp (disjoin (conjoin #'evenp #'plusp) (conjoin #'oddp #'minusp))) '(-4.0 -3 -2 -1 0 1 2 3 4.0))
+(NIL T NIL T NIL NIL T NIL NIL)
+vs.
+(mapcar #'(lambda (x) (and (integerp x) (or (and (evenp x) (plusp x)) (and (oddp x) (minusp x)))) ) '(-4.0 -3 -2 -1 0 1 2 3 4.0))
+(NIL T NIL T NIL NIL T NIL NIL)
+-------------------------------------------
+Alexandria
+日 250720
+
+(defun ensure-function (function-designator)
+  "Returns the function designated by FUNCTION-DESIGNATOR:
+if FUNCTION-DESIGNATOR is a function, it is returned, otherwise
+it must be a function name and its FDEFINITION is returned."
+  (if (functionp function-designator)
+      function-designator
+      (fdefinition function-designator)))
+
+(defun disjoin (predicate &rest more-predicates)
+  "Returns a function that applies each of PREDICATE and MORE-PREDICATE
+functions in turn to its arguments, returning the primary value of the first
+predicate that returns true, without calling the remaining predicates.
+If none of the predicates returns true, NIL is returned."
+  (declare (optimize (speed 3) (safety 1) (debug 1)))
+  (let ((predicate (ensure-function predicate))
+	(more-predicates (mapcar #'ensure-function more-predicates)))
+    (lambda (&rest arguments)
+      (or (apply predicate arguments)                                <-- Why does this need special treatment?
+	  (some (lambda (p)
+		  (declare (type function p))
+		  (apply p arguments))
+		more-predicates)))))
+
+(defun conjoin (predicate &rest more-predicates)
+  "Returns a function that applies each of PREDICATE and MORE-PREDICATE
+functions in turn to its arguments, returning NIL if any of the predicates
+returns false, without calling the remaining predicates. If none of the
+predicates returns false, returns the primary value of the last predicate."
+  (if (null more-predicates)                                        <-- Why no ENSURE-FUNCTION?
+      predicate
+      (lambda (&rest arguments)
+	(and (apply predicate arguments)
+	     ;; Cannot simply use CL:EVERY because we want to return the    <-- As noted above, using EVERY is subtly different
+	     ;; non-NIL value of the last predicate if all succeed.
+	     (do ((tail (cdr more-predicates) (cdr tail))
+		  (head (car more-predicates) (car tail)))
+		 ((not tail)
+		  (apply head arguments))
+	       (unless (apply head arguments)
+		 (return nil)))))))
+
+They appear very concerned about preserving the semantics of AND in the definition of CONJOIN:
+(let ((ch #\b)) (and (alpha-char-p ch) (lower-case-p ch) (char-upcase ch)))
+#\B
+(let ((ch #\B)) (and (alpha-char-p ch) (lower-case-p ch) (char-upcase ch)))
+NIL
+
+(let ((ch #\B)) (funcall (conjoin #'alpha-char-p #'lower-case-p #'char-upcase) ch))
+NIL
+(let ((ch #\b)) (funcall (conjoin #'alpha-char-p #'lower-case-p #'char-upcase) ch))
+#\B
+
+Multiple values with AND/OR:
+• Quirk of AND/OR, multiple values only returned by last subform:
+[https://www.lispworks.com/documentation/HyperSpec/Body/m_and.htm]
+CLHS says:
+    and passes back multiple values from the last subform but not from subforms other than the last.
+Similarly for OR.
+
+The issue is easier to observe with OR:
+(or (floor 8 3)) => 2; 2
+(or (floor 8 3) t) => 2
+
+Normally, AND only returns a "true" value if all subforms including the last are true:
+(let ((x 8)) (and (integerp x) (plusp x) (evenp x) (truncate x 3))) => 2; 2
+Short-circuit evaluation typically fails with a simple NIL value:
+(let ((x 5)) (and (integerp x) (plusp x) (evenp x) (truncate x 3))) => NIL 
+
+However, in contrived cases we can see that AND only returns primary values for forms
+other than the last subform just as with OR:
+(and (values nil 8) t) => NIL
+(and (values nil 8)) => NIL; 8
+
+
+However, they don't quite maintain the behavior of OR in DISJOIN:
+(let ((n 3)) (or (integerp n) (truncate n)))
+T
+(let ((n pi)) (or (integerp n) (truncate n)))
+3
+0.14159265358979312d0
+
+(let ((n 3)) (funcall (disjoin #'integerp #'truncate) n))
+T
+(let ((n pi)) (funcall (disjoin #'integerp #'truncate) n))       <-- No multiple value
+3
+
+For what it's worth, CONJOIN goes all in:
+(let ((n 3)) (and (floatp n) (truncate n)))
+NIL
+(let ((n pi)) (and (floatp n) (truncate n)))
+3
+0.14159265358979312d0
+
+(let ((n 3)) (funcall (conjoin #'floatp #'truncate) n))
+NIL
+(let ((n pi)) (funcall (conjoin #'floatp #'truncate) n))
+3
+0.14159265358979312d0
+
+-------------------------------------------
+Partial functions revisited (improved by Alexandria)
+日 250720
+
+APPLY vs. MULTIPLE-VALUE-CALL (Special operator)
+
+Different ways to invoke a function:
+[In any case, invoked function does not know how it was called.]
+
+(defun foo (a b c &optional d e)
+  (list a b c d e))
+
+(defun bar (a b c d e)
+  (list a b c d e))
+
+
+If everything is known at compile-time, just call the function:
+(foo 1 2 3 4 5) => (1 2 3 4 5)
+
+
+If some decisions need to be made at runtime: (e.g., H.O. function)
+(let ((f #'foo))
+  (funcall f 1 2 3 4 5))
+=> (1 2 3 4 5)
+
+(let ((f #'foo))
+  (apply f '(1 2 3 4 5)))
+=> (1 2 3 4 5)
+
+(let ((f #'foo))
+  (multiple-value-call f (values-list '(1 2 3 4 5)))) ; Flattened? Sort of like FUNCALL?
+=> (1 2 3 4 5)
+
+
+Two partial lists of args?
+(let ((f #'foo))
+  (apply f '(1 2) '(3 4 5))) ; Doesn't work!!
+=> ((1 2) 3 4 5 NIL)
+
+(let ((f #'foo))
+  (apply f (append '(1 2) '(3 4 5)))) ; APPEND creates new list
+=> (1 2 3 4 5)
+
+(let ((f #'foo))
+  (multiple-value-call f (values-list '(1 2)) (values-list '(3 4 5)))) ; No CONSing
+=> (1 2 3 4 5)
+
+With partial function application:
+• Some args are fixed. Some are supplied when function is called.
+(f fixed args) "Left curry"
+(f args fixed) "Right curry"
+
+Example:
+• Is 2 < x?
+(funcall (partial #'< 2) x)
+• Is x < 2?
+(funcall (partial* #'< 2) x)
+[Alternatively: (funcall (partial #'> 2) x)]
+
+Alexandria:
+(defun curry (function &rest arguments)
+  "Returns a function that applies ARGUMENTS and the arguments
+it is called with to FUNCTION."
+  (declare (optimize (speed 3) (safety 1)))
+  (let ((fn (ensure-function function)))
+    (lambda (&rest more)
+      (declare (dynamic-extent more))
+      ;; Using M-V-C we don't need to append the arguments.
+      (multiple-value-call fn (values-list arguments) (values-list more)))))
+
+(define-compiler-macro curry (function &rest arguments)
+  (let ((curries (make-gensym-list (length arguments) "CURRY"))
+        (fun (gensym "FUN")))
+    `(let ((,fun (ensure-function ,function))
+           ,@(mapcar #'list curries arguments))
+       (declare (optimize (speed 3) (safety 1)))
+       (lambda (&rest more)
+         (declare (dynamic-extent more))
+         (apply ,fun ,@curries more)))))
+
+(defun rcurry (function &rest arguments)
+  "Returns a function that applies the arguments it is called
+with and ARGUMENTS to FUNCTION."
+  (declare (optimize (speed 3) (safety 1)))
+  (let ((fn (ensure-function function)))
+    (lambda (&rest more)
+      (declare (dynamic-extent more))
+      (multiple-value-call fn (values-list more) (values-list arguments)))))
+
+
+"Left curry"
+(defun partial (f &rest fixed)
+  "Create a partial function that calls F with 0+ fixed arguments. The remaining arguments are to be supplied when the function is called."
+  (if (null fixed)
+      f
+      (destructuring-bind (fixed0 &rest fixed) fixed
+        (if (null fixed)
+            #'(lambda (&rest args) (apply f fixed0 args))
+            (destructuring-bind (fixed1 &rest fixed) fixed
+              (if (null fixed)
+                  #'(lambda (&rest args) (apply f fixed0 fixed1 args))
+                  (destructuring-bind (fixed2 &rest fixed) fixed
+                    (if (null fixed)
+                        #'(lambda (&rest args) (apply f fixed0 fixed1 fixed2 args))
+                        #'(lambda (&rest args)
+                            (multiple-value-call f fixed0 fixed1 fixed2 (values-list fixed) (values-list args)))) )))) )))
+;                            (apply f fixed0 fixed1 fixed2 (append fixed args)))) )))) )))
+
+
+"Right curry"
+(defun partial* (f &rest fixed)
+  "Create a partial function that calls F with 0+ fixed arguments following the remaining arguments supplied when the function is called."
+  (if (null fixed)
+      f
+      #'(lambda (&rest args)
+          (apply f (append args fixed)))) )
+
+(defun partial** (f &rest fixed)
+  "Create a partial function that calls F with 0+ fixed arguments following the remaining arguments supplied when the function is called."
+  (if (null fixed)
+      f
+      (destructuring-bind (fixed0 &rest fixed) fixed
+        (if (null fixed)
+            #'(lambda (&rest args) (multiple-value-call f (values-list args) fixed0))
+            (destructuring-bind (fixed1 &rest fixed) fixed
+              (if (null fixed)
+                  #'(lambda (&rest args) (multiple-value-call f (values-list args) fixed0 fixed1))
+                  (destructuring-bind (fixed2 &rest fixed) fixed
+                    (if (null fixed)
+                        #'(lambda (&rest args) (multiple-value-call f (values-list args) fixed0 fixed1 fixed2))
+                        #'(lambda (&rest args)
+                            (multiple-value-call f (values-list args) fixed0 fixed1 fixed2 (values-list fixed)))) )))) )))
+
+(defun partial*** (f &rest fixed)
+  "Create a partial function that calls F with 0+ fixed arguments following the remaining arguments supplied when the function is called."
+  (if (null fixed)
+      f
+      (destructuring-bind (fixed0 &rest fixed) fixed
+        (if (null fixed)
+            #'(lambda (&rest args)
+                (if (null args)
+                    (funcall f fixed0)
+                    (destructuring-bind (arg0 &rest args) args
+                      (if (null args)
+                          (funcall f arg0 fixed0)
+                          (destructuring-bind (arg1 &rest args) args
+                            (if (null args)
+                                (funcall f arg0 arg1 fixed0)
+                                (destructuring-bind (arg2 &rest args) args
+                                  (if (null args)
+                                      (funcall f arg0 arg1 arg2 fixed0)
+                                      (multiple-value-call f arg0 arg1 arg2 (values-list args) fixed0)))) )))) )
+            (destructuring-bind (fixed1 &rest fixed) fixed
+              (if (null fixed)
+                  #'(lambda (&rest args)
+                      (if (null args)
+                          (funcall f fixed0 fixed1)
+                          (destructuring-bind (arg0 &rest args) args
+                            (if (null args)
+                                (funcall f arg0 fixed0 fixed1)
+                                (destructuring-bind (arg1 &rest args) args
+                                  (if (null args)
+                                      (funcall f arg0 arg1 fixed0 fixed1)
+                                      (destructuring-bind (arg2 &rest args) args
+                                        (if (null args)
+                                            (funcall f arg0 arg1 arg2 fixed0 fixed1)
+                                            (multiple-value-call f arg0 arg1 arg2 (values-list args) fixed0 fixed1)))) )))) )
+                  (destructuring-bind (fixed2 &rest fixed) fixed
+                    (if (null fixed)
+                        #'(lambda (&rest args)
+                            (if (null args)
+                                (funcall f fixed0 fixed1 fixed2)
+                                (destructuring-bind (arg0 &rest args) args
+                                  (if (null args)
+                                      (funcall f arg0 fixed0 fixed1 fixed2)
+                                      (destructuring-bind (arg1 &rest args) args
+                                        (if (null args)
+                                            (funcall f arg0 arg1 fixed0 fixed1 fixed2)
+                                            (destructuring-bind (arg2 &rest args) args
+                                              (if (null args)
+                                                  (funcall f arg0 arg1 arg2 fixed0 fixed1 fixed2)
+                                                  (multiple-value-call f arg0 arg1 arg2 (values-list args) fixed0 fixed1 fixed2)))) )))) )
+                        #'(lambda (&rest args)
+                            (if (null args)
+                                (multiple-value-call f fixed0 fixed1 fixed2 (values-list fixed))
+                                (destructuring-bind (arg0 &rest args) args
+                                  (if (null args)
+                                      (multiple-value-call f arg0 fixed0 fixed1 fixed2 (values-list fixed))
+                                      (destructuring-bind (arg1 &rest args) args
+                                        (if (null args)
+                                            (multiple-value-call f arg0 arg1 fixed0 fixed1 fixed2 (values-list fixed))
+                                            (destructuring-bind (arg2 &rest args) args
+                                              (if (null args)
+                                                  (multiple-value-call f arg0 arg1 arg2 fixed0 fixed1 fixed2 (values-list fixed))
+                                                  (multiple-value-call f arg0 arg1 arg2 (values-list args) fixed0 fixed1 fixed2 (values-list fixed)))) )))) )))) )))) ))
+
+
+
+(let ((f (partial* #'< 5 6 7 8)))
+(time (dotimes (i 1000000) (funcall f 1 2 3 4))))
+Evaluation took:
+  0.036 seconds of real time
+  0.036869 seconds of total run time (0.036840 user, 0.000029 system)
+  [ Real times consist of 0.002 seconds GC time, and 0.034 seconds non-GC time. ]
+  [ Run times consist of 0.001 seconds GC time, and 0.036 seconds non-GC time. ]
+  102.78% CPU
+  117,450,751 processor cycles
+  127,994,704 bytes consed
+  
+(let ((f (partial** #'< 5 6 7 8)))
+(time (dotimes (i 1000000) (funcall f 1 2 3 4))))
+Evaluation took:
+  0.023 seconds of real time
+  0.022132 seconds of total run time (0.022132 user, 0.000000 system)
+  95.65% CPU
+  70,534,957 processor cycles
+  0 bytes consed
+  
+NIL
+*
+
+(let ((f (partial*** #'< 5 6 7 8)))
+(time (dotimes (i 1000000) (funcall f 1 2 3 4))))
+Evaluation took:
+  0.029 seconds of real time
+  0.029317 seconds of total run time (0.028318 user, 0.000999 system)
+  [ Real times consist of 0.001 seconds GC time, and 0.028 seconds non-GC time. ]
+  [ Run times consist of 0.002 seconds GC time, and 0.028 seconds non-GC time. ]
+  100.00% CPU
+  93,430,270 processor cycles
+  63,988,432 bytes consed                   <--- ?????????????????????????
+  
+NIL
+* 
+
+* (let ((f (rcurry #'< 5 6 7 8)))
+(time (dotimes (i 1000000) (funcall f 1 2 3 4))))
+Evaluation took:
+  0.016 seconds of real time
+  0.016410 seconds of total run time (0.016410 user, 0.000000 system)
+  100.00% CPU
+  52,299,502 processor cycles
+  0 bytes consed
+  
+NIL
+
+Clojure style:
+(defn partial
+  "Takes a function f and fewer than the normal arguments to f, and
+  returns a fn that takes a variable number of additional args. When
+  called, the returned function calls f with args + additional args."
+  {:added "1.0"
+   :static true}
+  ([f] f)
+  ([f arg1]
+   (fn
+     ([] (f arg1))
+     ([x] (f arg1 x))
+     ([x y] (f arg1 x y))
+     ([x y z] (f arg1 x y z))
+     ([x y z & args] (apply f arg1 x y z args))))
+  ([f arg1 arg2]
+   (fn
+     ([] (f arg1 arg2))
+     ([x] (f arg1 arg2 x))
+     ([x y] (f arg1 arg2 x y))
+     ([x y z] (f arg1 arg2 x y z))
+     ([x y z & args] (apply f arg1 arg2 x y z args))))
+  ([f arg1 arg2 arg3]
+   (fn
+     ([] (f arg1 arg2 arg3))
+     ([x] (f arg1 arg2 arg3 x))
+     ([x y] (f arg1 arg2 arg3 x y))
+     ([x y z] (f arg1 arg2 arg3 x y z))
+     ([x y z & args] (apply f arg1 arg2 arg3 x y z args))))
+  ([f arg1 arg2 arg3 & more]
+   (fn [& args] (apply f arg1 arg2 arg3 (concat more args)))))
+
 ----------------------------------------------------------------------------
 240514 火
 4 types of closures.
@@ -6011,10 +6675,11 @@ NIL
 ----------------------------------------------------------------------------
 250409 水
 Partial function application (not currying!)
+[See further discussion above (日 250720) based on studying Alexandria libray.]
 
 Why?
 General-purpose function -> customized function (While you wait! Add Rhinestones $2.50)
-+
+Example: +
 
 (defun add2 (x)
   (+ x 2))
@@ -6123,7 +6788,12 @@ Clojure-influenced:
 (= (linear3 3 2 7) (funcall (partial #'linear3) 3 2 7))
 (= (linear2 2 7) (funcall (partial #'linear3 3) 2 7))
 (= (linear1 7) (funcall (partial #'linear3 3 2) 7))
-(= (linear0) (funcall (partial #'linear3 3 2 7)))
+(= (linear0) (funcall (partial #'linear3 3 2 7)) (funcall (partial (partial (partial #'linear3 3) 2) 7)))
+
+(defun multiply-three (x y z) (* x y z))
+(funcall (partial #'multiply-three 9) 7 2) => 126
+(funcall (partial (partial #'multiply-three 9) 7) 2) => 126
+(funcall (partial (partial (partial #'multiply-three 9) 7) 2)) => 126
 
 Quiz:
 (funcall (compose #'first #'rest #'rest #'rest #'rest) '(a b c d e f))
