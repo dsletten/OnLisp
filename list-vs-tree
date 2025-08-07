@@ -1,0 +1,264 @@
+============================================================================
+250731 木
+
+In §5.6, Graham raises the question of viewing a list as a tree:
+"Any list can be interpreted as a binary tree."
+(Although he does observe that there are "several different ways to interpret a list as a tree".)
+
+There are two aspects to the issue:
+• How do we interpret a list as a tree?
+• How we represent a tree using a list? (What kinds of trees can we represent?)
+
+The immediate corollary arises:
+A list must represent a unique tree.
+
+
+Types of trees
+• Binary vs. General
+• More significantly:
+  • Homogeneous nodes
+    • Root same as leaves
+    • Each is labelled (or contains data)
+  • Distinct internal nodes vs. leaves
+
+https://en.wikipedia.org/wiki/Tree_(abstract_data_type)
+A value or pointer to other data may be associated with every node in the tree, or sometimes only with the leaf nodes, which have no children nodes. 
+
+Graph theory:
+• A labeled vertex is a vertex that is associated with extra information that enables it to be distinguished from other labeled vertices;
+  two graphs can be considered isomorphic only if the correspondence between their vertices pairs up vertices with equal labels.
+• An unlabeled vertex is one that can be substituted for any other vertex based only on its adjacencies in the graph and not based on any additional information.
+
+Graham:
+CONS can easily model binary tree:
+• Left subtree -> CAR
+• Right subtree -> CDR
+
+[No discussion of how general tree might be represented by list.]
+Only leaves labelled in Graham's examples.
+
+Tree is
+atom: A
+tree: (cons <LEFT> <RIGHT>)
+
+(a . b)
+
+           /\             [*|*]
+          /  \             | | 
+         ⓐ   ⓑ            v v 
+                           ⓐ ⓑ  
+
+(a b c) ≡ (a . (b . (c . nil)))
+
+                /\                 [*|*]--->[*|*]--->[*|*]--->∅
+               /  \                 |        |        |        
+              ⓐ  /\                v        v        v        
+                 /  \               ⓐ       ⓑ       ⓒ          
+                ⓑ  /\
+                   /  \
+                  ⓒ   ∅
+
+(a b (c d)) ≡ (a . (b . (c . ((d . nil) . nil))))
+
+                /\                  [*|*]--->[*|*]--->[*|*]--->∅          
+               /  \                  |        |        |                  
+              ⓐ  /\                 v        v        v                  
+                 /  \                ⓐ       ⓑ       [*|*]--->[*|*]--->∅  
+                ⓑ  /\                                  |        |         
+                   /  \                                 v        v         
+                  /\   ∅                               ⓒ       ⓓ          
+                 /  \
+                ⓒ  /\
+                   /  \
+                  ⓓ   ∅
+
+
+Tanimoto ch. 2 exercises [https://www.amazon.com/Elements-Artificial-Intelligence-Using-Common/dp/0716782693/]:
+General tree (nth elt -> nth subtree)
+Only leaves labelled
+
+((A B) (C D) (E F))
+
+                       ◯                      [*|*]------------------>[*|*]------------------>[*|*]--->NIL          
+                      /|\                      |                       |                       |                    
+                     / | \                     v                       v                       v                    
+                    /  |  \                   [*|*]--->[*|*]--->NIL   [*|*]--->[*|*]--->NIL   [*|*]--->[*|*]--->NIL 
+                   /   |   \                   |        |              |        |              |        |           
+                  ◯    ◯    ◯                  v        v              v        v              v        v           
+                 /|   / \   |\                 A        B              C        D              E        F           
+                / |  /   \  | \
+               A  B C     D E  F
+
+(defvar *tree* '((A B) (C D) (E F)))
+(first *tree*) => (A B) ; First (leftmost) subtree
+(first (first *tree*)) => A ; First leaf of first subtree
+(second (first *tree*)) => B ; Second leaf of first subtree
+(first (second *tree*)) => C
+(second (third *tree*)) => F
+
+Binary tree:
+((3 (2 5)) (7 (2 1)))
+
+                            ◯                    [*|*]--------------------------->[*|*]--->NIL                   
+                           / \                    |                                |                             
+                          /   \                   v                                v                             
+                         /     \                 [*|*]--->[*|*]--->NIL            [*|*]--->[*|*]--->NIL          
+                        /       \                 |        |                       |        |                    
+                       ◯         ◯                v        v                       v        v                    
+                      / \       / \               3       [*|*]--->[*|*]--->NIL    7       [*|*]--->[*|*]--->NIL 
+                     /   \     /   \                       |        |                       |        |           
+                    3     ◯   7     ◯                      v        v                       v        v           
+                         / \       / \                     2        5                       2        1           
+                        /   \     /   \
+                       2     5   2     1
+
+
+
+(defclass binary-tree ()
+  ((root :accessor root :initarg :root :type (or integer node))))
+
+(defclass node ()
+  ((left :accessor left :initarg :left :type (or integer node))
+   (right :accessor right :initarg :right :type (or integer node))))
+
+Convert list to tree:
+FIRST/SECOND vs. CAR/CDR (LEFT/RIGHT)
+(defun make-tree (nodes)
+  (labels ((make-node (tree)
+             (cond ((atom tree) tree)
+                   (t (make-instance 'node
+                                     :left (make-node (first tree))
+                                     :right (make-node (second tree)))) )))
+    (make-instance 'binary-tree :root (make-node nodes))))
+
+Kubica:
+Binary tree ch. 5
+All nodes labelled
+
+(defclass tree-node ()
+  ((value :reader value :initarg :value)
+   (left :accessor left :initform nil)
+   (right :accessor right :initform nil)))
+
+                                     ⑧
+                                    /  \
+                                   /    \
+                                  /      \
+                                 /        \
+                                ③         ⑳
+                               /  \       /
+                              /    \     /
+                             ①     ⑤  ⑪
+
+
+Requires different representation as list:
+(8 (3 1 5) (20 11))
+ ^ ^       ^
+ | |       |
+ | |       Right child
+ | |
+ | Left child
+ |
+ Node's value
+
+(50 (23 (14 (6 1 7) (17 nil 21))
+        (38 (27 nil 29) 42))
+    (67 (60 (59 58 nil) 63)
+        (81 78 (92 91 95))))
+
+Unambiguous???
+
+Shaffer ch. 6 [https://www.amazon.com/Structures-Algorithm-Analysis-Computer-Science/dp/0486485811/]
+Weiss ch. 4 [https://www.amazon.com/Data-Structures-Algorithm-Analysis-Java/dp/0132576279/]
+Binary/general tree
+All nodes labelled
+
+parent -> first child -> next sibling
+
+(defclass tree-node ()
+  ((element :reader element :initarg :element)
+   (first-child :reader first-child :type (or null tree-node))
+   (next-sibling :reader next-sibling :type (or null tree-node))))
+
+
+                                             Ⓐ
+                                           ⟋/|\⟍⎺⎻⎼⎽
+                                         ⟋ / | \  ⟍   ⎺⎻⎼⎽
+                                      ⟋   /  |  \   ⟍       ⎺⎻⎼⎽  
+                                    Ⓑ    Ⓒ  Ⓓ  Ⓔ   Ⓕ           Ⓖ
+                                             /  / |   |\⟍          \
+                                            /  /  |   | \  ⟍        \
+                                           Ⓗ Ⓘ  Ⓙ   Ⓚ Ⓛ  Ⓜ       Ⓝ
+                                                 / \
+                                                /   \
+                                               Ⓟ    Ⓠ
+
+
+(Ⓐ (Ⓑ Ⓒ (Ⓓ (Ⓗ)) (Ⓔ (Ⓘ (Ⓙ (Ⓟ Ⓠ)))) (Ⓕ (Ⓚ Ⓛ Ⓜ)) (Ⓖ (Ⓝ)))
+
+
+https://en.wikipedia.org/wiki/Left-child_right-sibling_binary_tree
+Every multi-way or k-ary tree structure studied in computer science admits a representation as a binary tree
+
+https://xlinux.nist.gov/dads/HTML/binaryTreeRepofTree.html
+https://xlinux.nist.gov/dads/HTML/multiwaytree.html
+Multiway Tree: A tree with any number of children for each node.
+
+
+
+                  1
+                 /|\
+                / | \
+               /  |  \
+              2   3   4
+             / \      |
+            5   6     7
+                     / \
+                    8   9
+
+
+                  1
+                 /
+                /
+               /
+              2---3---4
+             /       /
+            5---6   7
+                   /
+                  8---9
+
+
+                1
+               /
+              2
+             / \
+            5   3
+             \   \
+              6   4
+                 /
+                7
+               /
+              8
+               \
+                9
+
+
+
+
+
+
+
+
+
+
+
+
+
+https://en.wikipedia.org/wiki/Enclosed_Alphanumerics
+(loop for i from #x24B6 repeat 26 do (write-char (code-char i)))
+ⒶⒷⒸⒹⒺⒻⒼⒽⒾⒿⓀⓁⓂⓃⓄⓅⓆⓇⓈⓉⓊⓋⓌⓍⓎⓏ
+(loop for i from #x24D0 repeat 26 do (write-char (code-char i)))
+ⓐⓑⓒⓓⓔⓕⓖⓗⓘⓙⓚⓛⓜⓝⓞⓟⓠⓡⓢⓣⓤⓥⓦⓧⓨⓩ
+(loop for i from #x2460 repeat 20 do (write-char (code-char i)))
+①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳
+
