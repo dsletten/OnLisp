@@ -5588,7 +5588,7 @@ Or even:
 #'(lambda (&rest args)
     (f (g (apply #'h args))))
 
-
+[见 §15.1]
 (defmacro compose (&rest fs)
   (let ((args (gensym)))
     (labels ((compose-fns (fs)
@@ -5811,6 +5811,7 @@ g = proc{|x| x * 3}
 ----------------------------------------------------------------------------
 250710 木
 Build a function that applies one function or another depending on result of a predicate:
+(Hard to find a real use for this H.O. function...)
 
 Example
 Given a list of strings and symbols, map the symbols to lowercase strings of their names. Take strings "as is":
@@ -5974,6 +5975,8 @@ He gives the corresponding Common Lisp versions:
 
 Multiple args passed to predicate
 (funcall (conjoin #'<) 2 3) => T
+
+"Is x greater than y and is x divisible by y?"
 (funcall (conjoin #'> (compose #'zerop #'mod)) 4 2) => T
 (funcall (conjoin #'> (compose #'zerop #'mod)) 4 1) => T
 (funcall (conjoin #'> (compose #'zerop #'mod)) 4 4) => NIL
@@ -6055,6 +6058,16 @@ a pseudo-predicate in that SOME may return a "true" value other than T:
 This means that the behavior of SOME is more consistent with the behavior of OR, whereas
 EVERY behaves differently from AND.
 
+Graham sample definition (68 页):
+[This is a rough sketch. The actual EVERY function operates on sequences rather than just lists
+ (i.e., it handles vectors/strings too) and can process multiple sequences in parallel (i.e., 
+ if F is a function of N variables -> N sequences).]
+(defun every (f l)
+  (if (null l)
+      t
+      (and (funcall f (first l))
+           (every f (rest l)))) )
+
 For example:
 (or (char-upcase #\a) (char-upcase #\P)) => #\A
 (some #'char-upcase '(#\a #\P)) => #\A
@@ -6072,11 +6085,26 @@ vs. Graham's version
 [Since SOME is fundamentally more similar to OR, the difference doesn't show up in DISJOIN]
 
 Go crazy!
+(remove-if-not (conjoin #'evenp (partial* #'< 15)) #[1 20]) => (2 4 6 8 10 12 14)
+
 (mapcar (conjoin #'integerp (disjoin (conjoin #'evenp #'plusp) (conjoin #'oddp #'minusp))) '(-4.0 -3 -2 -1 0 1 2 3 4.0))
 (NIL T NIL T NIL NIL T NIL NIL)
 vs.
 (mapcar #'(lambda (x) (and (integerp x) (or (and (evenp x) (plusp x)) (and (oddp x) (minusp x)))) ) '(-4.0 -3 -2 -1 0 1 2 3 4.0))
 (NIL T NIL T NIL NIL T NIL NIL)
+-------------------------------------------
+Using REDUCE (Not short-circuiting!!)
+(defun conjoin (&rest ps)
+  #'(lambda (&rest args)
+      (reduce #'(lambda (b p) (and b (apply p args))) ps :initial-value t)))
+
+(defun disjoin (&rest ps)
+  #'(lambda (&rest args)
+      (reduce #'(lambda (b p) (or b (apply p args))) ps :initial-value nil)))
+
+Similar semantics to Graham's version:
+(map 'list (conjoin #'alpha-char-p #'lower-case-p #'char-upcase) "Is this not pung?")
+(NIL #\S NIL #\T #\H #\I #\S NIL #\N #\O #\T NIL #\P #\U #\N #\G NIL)
 -------------------------------------------
 Alexandria
 日 250720
@@ -6426,6 +6454,9 @@ Evaluation took:
   
 NIL
 
+PARTIAL** is competitive with RCURRY with the same declaration:
+(declare (optimize (speed 3) (safety 1)))
+
 Clojure style:
 (defn partial
   "Takes a function f and fewer than the normal arguments to f, and
@@ -6458,6 +6489,308 @@ Clojure style:
   ([f arg1 arg2 arg3 & more]
    (fn [& args] (apply f arg1 arg2 arg3 (concat more args)))))
 
+----------------------------------------------------------------------------
+250725 金
+§5.5 Recursion on CDRs
+Pattern - recurse across list
+(defun length (l)
+  (if (null l)
+      0
+      (1+ (length (rest l)))) )
+
+(defun every (f l)
+  (if (null l)
+      t
+      (and (funcall f (first l))
+           (every f (rest l)))) )
+
+Substantial differences!
+• Tail recursive vs. not
+• EVERY may terminate before end of list.
+• Different arity!
+
+LREC ("List recurser")
+Generalizes functions that recursively traverse a list.
+
+Graham's original:
+LABELS creates a named closure to allow recursive calls.
+Can't just use #'(lambda ...) -- Anonymous.
+[See also: Y-Combinator https://groups.google.com/g/clojure/c/yb1OeeWHemY]
+(defun lrec (rec &optional base)
+  (labels ((self (lst)
+             (if (null lst)
+                 (if (functionp base)
+                     (funcall base)
+                     base)
+                 (funcall rec (car lst)
+                              #'(lambda () 
+                                  (self (cdr lst)))))))
+    #'self))
+
+But we know whether BASE is a function. Why not construct separate functions?
+(defun lrec (rec &optional base)
+  (labels ((function-base (l)
+             (if (null l)
+                 (funcall base)  ; 0-arg function?!?
+                 (funcall rec (first l) #'(lambda () (function-base (rest l)))) ))
+           (atom-base (l)
+             (if (null l)
+                 base
+                 (funcall rec (first l) #'(lambda () (atom-base (rest l)))) )))
+    (if (functionp base) #'function-base #'atom-base)))
+
+LENGTH:
+(funcall (lrec #'(lambda (x f) (declare (ignore x)) (1+ (funcall f))) 0) '()) => 0
+(funcall (lrec #'(lambda (x f) (declare (ignore x)) (1+ (funcall f))) 0) '(a b c d)) => 4
+
+
+EVERY:
+(funcall (lrec #'(lambda (x f) (and (oddp x) (funcall f))) t) '(1 2 3 4)) => NIL ; Hard-wired ODDP. No general EVERY????
+(funcall (lrec #'(lambda (x f) (and (oddp x) (funcall f))) t) '(1 3 5 7 9)) => T
+
+Effectively:
+(defun every-oddp (l)
+  (if (null l)
+      t
+      (funcall #'(lambda (x f) (and (oddp x) (funcall f)))
+               (first l)
+               #'(lambda () (every-oddp (rest l)))) ))
+
+vs.
+Naive:
+(defun every-oddp (l)
+  (if (null l)
+      t
+      (and (oddp (first l))
+           (every-oddp (rest l)))) )
+
+
+(funcall (partial #'every #'oddp) '(1 3 5 7 9)) => T
+(funcall (partial #'every #'oddp) '(1 2 3 4)) => NIL
+
+Need wrapper?
+(defun every (p l) ; Only works on single list (not multiple sequences...)
+  (funcall (lrec #'(lambda (x f) (and (funcall p x) (funcall f))) t) l))
+
+(every #'oddp '(1 3 5 7 9)) => T
+
+
+FIND-IF:
+(funcall (lrec #'(lambda (x f) (if (oddp x) x (funcall f)))) '(2 4 5 6 8)) => 5
+
+
+SOME:
+(funcall (lrec #'(lambda (x f) (or (oddp x) (funcall f)))) '(1 2 3 4)) => T
+
+
+COPY-LIST:
+(funcall (lrec #'(lambda (x f) (cons x (funcall f)))) '(a (b c) d e (f))) => (A (B C) D E (F))
+
+
+ADJOIN-LIST:
+(funcall (lrec #'(lambda (x f) (adjoin x (funcall f)))) '(a (b c) d e (f))) => (A (B C) D E (F))
+
+(funcall (lrec #'(lambda (x f) (cons x (funcall f)))) '(a b c a c d a b)) => (A B C A C D A B) ; COPY-LIST (CONS)
+(funcall (lrec #'(lambda (x f) (adjoin x (funcall f)))) '(a b c a c d a b)) => (C D A B) ; ADJOIN-LIST (ADJOIN)
+
+Graham acknowledges that LREC (and other recurer generators, e.g., TREC) will not always produce
+the most efficient implementation of a desired function. Moreover, the use of LREC precludes
+tail-recursive function definitions. Consequently they should be used "in initial versions of a program,
+or in parts where speed is not critical".
+
+This guidance runs counter to his stated goals in ch. 4 (44 页):
+    Such examples show that it’s especially important to write utilities for situations    
+    we might otherwise handle inefficiently. A language augmented with the right           
+    utilities will lead us to write more abstract programs. If these utilities are properly
+    defined, it will also lead us to write more efficient ones.
+
+Yet LREC is knowingly being used to produce less efficient utility functions.
+
+In my view, LREC is a dud. It is a wrong turn down an alley for the sake of forced refactoring.
+Not all patterns need an abstraction layer. Here the use of LREC results in convoluted, less flexible,
+less efficient code than what one would ordinarily write.
+-------------------------------------------
+Similar forced refactoring
+(defun member (obj set &key (test #'eql))
+  (cond ((null set) nil)
+        ((funcall test obj (first set)) set)
+        (t (member obj (rest set) :test test))))
+
+(defun union (a b)
+  (cond ((null a) b)
+        ((member (first a) b) (union (rest a) b))
+        (t (cons (first a) (union (rest a) b)))) )
+
+(defun intersection (a b)
+  (cond ((null a) '())
+        ((member (first a) b) (cons (first a) (intersection (rest a) b)))
+        (t (intersection (rest a) b))))
+
+(defun set-difference (a b)
+  (cond ((null a) '())
+        ((member (first a) b) (set-difference (rest a) b))
+        (t (cons (first a) (set-difference (rest a) b)))) )
+
+vs.
+
+(defun set-operation (a b base in out)
+  (cond ((null a) base)
+        ((member (first a) b) (funcall in a b))
+        (t (funcall out a b))))
+
+(defun union (a b)
+  (set-operation a b b #'(lambda (a b) (union (rest a) b)) #'(lambda (a b) (cons (first a) (union (rest a) b)))) )
+
+(defun intersection (a b)
+  (set-operation a b '() #'(lambda (a b) (cons (first a) (intersection (rest a) b))) #'(lambda (a b) (intersection (rest a) b))) )
+
+(defun set-difference (a b)
+  (set-operation a b '() #'(lambda (a b) (set-difference (rest a) b)) #'(lambda (a b) (cons (first a) (set-difference (rest a) b)))) )
+-------------------------------------------
+§5.6 Recursion on Subtrees
+See RMAPCAR above
+
+(defun ttrav (rec &optional (base #'identity))
+  (labels ((self (tree)
+             (if (atom tree)
+                 (if (functionp base)
+                     (funcall base tree)
+                     base)
+                 (funcall rec (self (car tree))
+                              (if (cdr tree) 
+                                  (self (cdr tree)))))))
+    #'self))
+
+Differences from LREC above:
+• REC is function of 2 args. One for the CAR and one for the CDR.
+• While traversing a list, base case is simply NIL (end of list).
+  For tree, leaf node might have more interesting value. Thus, in LREC,
+  BASE is simply a constant (0-arg function), whereas in TTRAV, BASE
+  takes a single arg corresponding to the leaf node on which it is operating.
+
+Examples
+(Graham points out that these are stylized versions of the conventional functions
+to "make the pattern obvious".)
+
+COPY-TREE:
+(defun copy-tree (obj)
+  (if (atom obj)
+      obj
+      (cons (copy-tree (car obj))
+            (if (cdr obj) (copy-tree (cdr obj)))) )) ; Idiosyncratic IF (no ELSE)
+
+(funcall (ttrav #'cons) '(a (b c) (d ((e))))) => (A (B C) (D ((E))))
+
+COUNT-LEAVES:
+(defun count-leaves (obj)
+  (if (atom obj)
+      1 ; Counts NILs as leaves
+      (+ (count-leaves (car obj))
+         (or (if (cdr obj) (count-leaves (cdr obj)))
+             1))))
+
+(funcall (ttrav #'(lambda (l r) (+ l (or r 1))) 1) '((a b (c d)) (e) f)) => 10
+
+FLATTEN:
+(defun flatten (obj)
+  (if (atom obj)
+      (mklist obj)
+      (nconc (flatten (car obj))
+             (if (cdr obj) (flatten (cdr obj)))) ))
+
+(funcall (ttrav #'nconc #'mklist) '(((1 (2 (3) (4 5 6)))))) => (1 2 3 4 5 6)
+
+Functions built by TTRAV always traverse entire tree. To control when recursive calls are made:
+TTRAV first arg -> function that operates on _results_ of recursive calls
+
+Instead, create closures representing the recursive calls:
+(defun trec (rec &optional (base #'identity))
+  (labels 
+    ((self (tree)
+       (if (atom tree)
+           (if (functionp base)
+               (funcall base tree)
+               base)
+           (funcall rec tree 
+                        #'(lambda () 
+                            (self (car tree)))
+                        #'(lambda () 
+                            (if (cdr tree)
+                                (self (cdr tree))))))))
+    #'self))
+
+Alternative FLATTEN:
+(Unconditionally recurs through entire tree)
+(funcall (trec #'(lambda (o l r) (declare (ignore o)) (nconc (funcall l) (funcall r))) #'mklist) '(((1 (2 (3) (4 5 6)))))) => (1 2 3 4 5 6)
+
+RFIND-IF: (Not possible to define with TTRAV.)
+Tree analog to FIND-IF sequence function
+
+(defun rfind-if (fn obj)
+  (if (atom obj)
+      (and (funcall fn obj) obj)
+      (or (rfind-if fn (car obj))
+          (if (cdr obj) (rfind-if fn (cdr obj)))) ))
+
+(funcall (trec #'(lambda (o l r) (declare (ignore o)) (or (funcall l) (funcall r))) #'(lambda (tree) (and (oddp tree) tree))) '(2 (3 4) 5)) => 3
+                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+                                                       Conditional recursion down right subtree.
+                                                       
+Note that this once again conflates the general purpose (RFIND-IF) with the specific (ODDP). This
+function would rightly be called RFIND-IF-ODDP (See EVERY-ODDP above).
+
+These functions look like dead ends just like LREC.
+-------------------------------------------
+250801 金
+Touretzky's recursion templates (ch. 8) preferable to Graham's "archetypal functions"?
+
+Single-Test Tail Recursion
+
+Template:
+(DEFUN func (X)
+  (COND (end-test end-value)
+        (T (func reduced-x))))
+
+Example:
+Func: FIND-FIRST-ATOM
+End-test: (ATOM X)
+End-value: X
+Reduced-x: (FIRST X)
+
+(defun find-first-atom (x)
+  (cond ((atom x) x)
+        (t (find-first-atom (first x)))))
+
+
+CAR/CDR Recursion (A Special Case of Multiple Recursion)
+
+Template:
+
+(DEFUN func (X)
+  (COND (end-test-1 end-value-1)
+        (end-test-2 end-value-2)
+        (T (combiner (func (CAR X))
+                     (func (CDR X))))))
+
+Example:
+Func: FIND-NUMBER
+End-test-1: (NUMBERP X)
+End-value-1: X
+End-test-2: (ATOM X)
+End-value-2: NIL
+Combiner: OR
+
+(defun find-number (x)
+  (cond ((numberp x) x)
+        ((atom x) nil)
+        (t (or (find-number (car x))
+               (find-number (cdr x))))))
+
+
+Chapter 6
+============================================================================
+☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆
+============================================================================
 ----------------------------------------------------------------------------
 240514 火
 4 types of closures.
