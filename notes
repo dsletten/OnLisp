@@ -6791,6 +6791,354 @@ Chapter 6
 ============================================================================
 ☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆
 ============================================================================
+250821 木
+Graham discusses using closures to represent "things" as an alternative to data structures.
+  "To represent with closures" is another way of saying "to compile". (More extensive examples in ch. 23, 24)
+
+Chapter 10 of The Little Lisper introduces a similar idea. Rather than representing a CONS as merely
+a pair of pointers to its CAR and CDR, create a closure that captures the CAR and CDR values:
+(shadow '(cons car cdr))
+(defun cons (u v)
+  #'(lambda (b)
+      (cond (b u)
+            (t v))))
+
+(defvar *lunch* (cons 'apple '()))
+
+*LUNCH* is a function. Pass in boolean value to select CAR/CDR:
+(defun car (l)
+  (funcall l t))
+
+(defun cdr (l)
+  (funcall l nil))
+
+Building up a "list" does not produce recognizable CDRs. But operationally CAR works as expected.
+(car *lunch*) => APPLE
+(cdr *lunch*) => NIL
+(cons 'banana *lunch*) => #<CLOSURE (LAMBDA (B) :IN CONS) {10026C861B}>
+(car *) => BANANA
+(cdr **) => #<CLOSURE (LAMBDA (B) :IN CONS) {100241F38B}>
+(car (cdr ***)) => APPLE
+
+(car (cons 'a '())) => A
+(cdr (cons 'a '())) => NIL
+(car (cons 'a (cons 'b (cons 'c '())))) => A
+(cdr (cons 'a (cons 'b (cons 'c '())))) => #<FUNCTION (LAMBDA (B) :IN CONS) {1003DEFBBB}>
+(car (cdr (cons 'a (cons 'b (cons 'c '()))))) => B
+
+Example:
+PERSON as closure rather than structure/object...
+ - Parameters as fields
+ - All of this could be bundled into a macro to define accessors.
+
+(defun person (name age)
+  #'(lambda (command)
+      (case command
+        (name name)
+        (age age))))
+
+(defun age (person)
+  (funcall person 'age))
+
+(defun name (person)
+  (funcall person 'name))
+
+(name (person "Ed" 25)) => "Ed"
+(age (person "MJO" 24)) => 24
+
+A related discussion in
+Ron Garret's The Idiot's Guide to Special Variables and Lexical Closures [https://flownet.com/ron/]
+    (defun up-n-down ()                                                                 
+      (let ((x 0))                                                                      
+        (list #'(lambda () (incf x))                                                    
+              #'(lambda () (decf x)))) )                                                
+                                                                                        
+    (defvar *l1* (up-n-down))                                                           
+    (defvar *l2* (up-n-down))                                                           
+                                                                                        
+    (funcall (first *l1*)) => 1                                                         
+    (funcall (first *l1*)) => 2                                                         
+    (funcall (first *l1*)) => 3                                                         
+    (funcall (second *l1*)) => 2                                                        
+                                                                                        
+    (funcall (first *l2*)) => 1                                                         
+    (funcall (first *l2*)) => 2                                                         
+    (funcall (first *l2*)) => 3                                                         
+    (funcall (second *l2*)) => 2                                                        
+                                                                                        
+    By now this should all make perfect sense. When we call up-n-down we get a new      
+    binding for X (established by the LET). This binding is then captured by the        
+    LAMBDA forms. Both lambdas in the list capture the same binding every time up-      
+    n-down is called, and every time we call up-n-down we get a (one) new binding.      
+                                                                                        
+    Notice how much the list returned by up-n-down resembles an object with one         
+    slot and two methods. That is in fact precisely what it is. This is why when a Lisp 
+    programmer learns a new programming language one of the first questions they        
+    will ask is, "does it have closures?" Because if you have closures you can build an 
+    OO system (and just about anything else you need) out of them. It is, alas, much    
+    harder to go the other way.
+
+
+Chapter 7
+============================================================================
+☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆
+============================================================================
+250822 金
+Macros - define operators that are implemented by transformation
+
+A macro is "a function that generates Lisp code--a program that writes programs".
+
+Function ------> value
+Macro ---------> expresion ----------> value
+      expansion            evaluation
+
+Expression generated by macro expansion is evaluated instead of original macro call.
+
+Ultimately, code only consists of:
+- Special forms
+- Function forms
+
+Graham's example:
+Macro NIL! sets argument to NIL
+(nil! x) => (setf x nil)
+
+(defmacro nil! (var)
+  (list 'setf var nil))
+
+(macroexpand-1 '(nil! x))
+(SETF X NIL)
+T
+(macroexpand '(nil! x))
+(SETQ X NIL)
+T
+
+(macroexpand-1 '(nil! (aref a i)))
+(SETF (AREF A I) NIL)
+T
+* (macroexpand '(nil! (aref a i)))
+(LET* ((#:A2108 A) (#:I2109 I) (#:NEW2107 NIL))
+  (FUNCALL #'(SETF AREF) #:NEW2107 #:A2108 #:I2109))
+T
+
+
+[*|*]--->[*|*]--->NIL  => [*|*]--->[*|*]--->[*|*]--->NIL
+ |        |                |        |        |          
+ v        v                v        v        v          
+NIL!      X               SETF      X       NIL
+
+ ^
+ |
+ |
+ Macro form. CAR names macro.
+
+https://www.lispworks.com/documentation/HyperSpec/Body/03_ababb.htm
+3.1.2.1.2.2 Macro Forms
+
+If the operator names a macro, its associated macro function is applied to the entire form
+and the result of that application is used in place of the original form. 
+
+The function returned by MACRO-FUNCTION is a function of two arguments, called the expansion function.
+
+The expansion function is invoked by calling the macroexpand hook with the expansion function as its first argument,
+the entire macro form as its second argument, and an environment object (corresponding to the current lexical environment)
+as its third argument.
+
+The macroexpand hook, in turn, calls the expansion function with the form as its first argument and
+the environment as its second argument. The value of the expansion function, which is passed through
+by the macroexpand hook, is a form. The returned form is evaluated in place of the original form. 
+
+(describe (macro-function 'nil!))
+#<FUNCTION (MACRO-FUNCTION NIL!) {B800D08A0B}>
+  [compiled function]
+
+
+Lambda-list: (VAR)                                             <-- ??
+Derived type: (FUNCTION (T T) (VALUES CONS &OPTIONAL))
+Documentation:
+  T
+Source form:
+  (LAMBDA (#1=#:EXPR #2=#:ENV)                                 <-- Actually takes 2 args: EXPR and ENV
+    (DECLARE (SB-C::LAMBDA-LIST (VAR)))                        <-- ??
+    (DECLARE (IGNORE #2#))
+    (SB-INT:NAMED-DS-BIND (:MACRO NIL! . DEFMACRO)
+        (VAR)
+        (CDR #1#)
+      (DECLARE (SB-C::CONSTANT-VALUE VAR))
+      (BLOCK NIL! `(SETF ,VAR NIL))))
+
+(describe (symbol-function 'nil!))                             <-- Implementation-dependent
+#<FUNCTION (:MACRO NIL!) {1004FF70DB}>
+  [compiled closure]
+
+
+Lambda-list: (&REST ARGS)
+Derived type: (FUNCTION (&REST T) NIL)
+Documentation:
+  T
+Source file: SYS:SRC;CODE;SIMPLE-FUN.LISP
+
+
+
+
+
+
+
+(macroexpand-1 '(defmacro nil! (var)
+                  (list 'setf var nil)))
+
+(PROGN
+ (EVAL-WHEN (:COMPILE-TOPLEVEL)
+   (SB-C::%COMPILER-DEFMACRO :MACRO-FUNCTION 'NIL!))
+ (EVAL-WHEN (:COMPILE-TOPLEVEL :LOAD-TOPLEVEL :EXECUTE)
+   (SB-C::%DEFMACRO 'NIL!
+                    (SB-INT:NAMED-LAMBDA (MACRO-FUNCTION NIL!)
+                        (#:EXPR #:ENV)
+                      (DECLARE (SB-C::LAMBDA-LIST (VAR)))
+                      (DECLARE (IGNORE #:ENV))
+                      (SB-INT:NAMED-DS-BIND (:MACRO NIL! . DEFMACRO)
+                          (VAR)
+                          (CDR #:EXPR)
+                        (DECLARE (SB-C::CONSTANT-VALUE VAR))
+                        (BLOCK NIL! (LIST 'SETF VAR NIL))))
+                    (SB-C:SOURCE-LOCATION))))
+
+
+Variable *MACROEXPAND-HOOK* [https://www.lispworks.com/documentation/HyperSpec/Body/v_mexp_h.htm]
+  a designator for a function that is equivalent to the function FUNCALL,
+  but that might have additional implementation-dependent side-effects.
+
+(defun hook (expander form env)
+  (when (eq (first form) 'nil!)
+    (format t "Expanding: ~S~%" form)
+    (format t "Expansion function: ~S~%" expander)
+    (describe expander)
+    (format t "Environment: ~S~%" env))
+  (funcall expander form env))
+
+
+
+
+
+
+
+By contrast, consider a function that builds the same expression:
+(defun nil? (var)
+  (list 'setf var nil))
+
+(nil? 'x) => (SETF X NIL)
+       ^
+       |
+       |
+       Must quote symbol as part of function evaluation.
+
+[*|*]--->[*|*]--->NIL
+ |        |
+ v        v
+NIL?     [*|*]--->[*|*]--->NIL
+          |        |
+          v        v
+         QUOTE     X
+
+
+
+
+Alternative definition of NIL! using helper function:
+(defmacro nil! (var)
+  (nil? var))
+
+Exactly same behavior as before:
+(macroexpand-1 '(nil! x))
+(SETF X NIL)
+T
+
+Possible to observe the expansion:
+(trace nil?)
+(NIL?)
+
+(macroexpand-1 '(nil! x))
+  0: (NIL? X)
+  0: NIL? returned (SETF X NIL)
+(SETF X NIL)
+T
+
+
+
+
+
+
+(defmacro nil! (var)
+  `(setf ,var nil))
+
+
+
+
+
+
+
+(let ((*read-base* 2)) (let ((8 9.)) (print 8)))
+; in: LET ((*READ-BASE* 2))
+;     (8 9)
+; 
+; caught ERROR:
+;   8 is not a symbol and cannot be used as a local variable.
+; 
+; compilation unit finished
+;   caught 1 ERROR condition
+
+(setf *read-base* 2)
+(let ((8 9.)) (print 8))
+
+9 
+9
+
+
+Expands prior to evaluation??
+
+(let ((*macroexpand-hook* (progn (format t "foo!~%") #'funcall))) (let ((y 2)) (nil! y) y))
+Expanding: (NIL! Y)
+Expansion function: #<FUNCTION (MACRO-FUNCTION NIL!) {B800D08A0B}>
+#<FUNCTION (MACRO-FUNCTION NIL!) {B800D08A0B}>
+  [compiled function]
+...
+foo!
+NIL
+
+
+
+
+
+Macro expansion may involve multiple levels of expansion before code is fully resolved
+into special operators/functions:
+(macroexpand-1 '(cond ((evenp x) 'even) ((oddp x) 'odd) (t 'huh?)))
+(IF (EVENP X)
+    'EVEN
+    (IF (ODDP X)
+        'ODD
+        (THE T 'HUH?)))
+T
+
+(macroexpand-1 '(or (and (evenp x) 'even) (and (oddp x) 'odd) 'huh?))
+(LET ((#:G2105 (AND (EVENP X) 'EVEN)))
+  (IF #:G2105
+      #:G2105
+      (LET ((#:G2106 (AND (ODDP X) 'ODD)))
+        (IF #:G2106
+            #:G2106
+            'HUH?))))
+T
+
+(macroexpand-1 '(AND (EVENP X) 'EVEN))
+(IF (EVENP X)
+    'EVEN)
+T
+
+
+
+
+
+
+
+
 ----------------------------------------------------------------------------
 240514 火
 4 types of closures.

@@ -22,14 +22,19 @@
 ;;;;   Example:
 ;;;;
 ;;;;   Notes:
-;;;;   Non-terminal nodes have YES/NO branches.
+;;;;   Non-terminal nodes have YES/NO branches. If a node has a question, then it has both YES and NO children.
+;;;;   RUN-NODE only checks for the presence of YES node. NO node is implicit as well (OTHERWISE branch of CASE).
+;;;;   
 ;;;;   Terminal nodes simply have a value as CONTENTS.
 ;;;;
+;;;;   Graham uses a single structure to represent both question and answer nodes, but they are still
+;;;;   distinct as with Slade, etc... (Not homogeneous as with Norvig).
 ;;;;
-(load "/home/slytobias/lisp/packages/lang.lisp")
+;;;;
+(load "/home/slytobias/lisp/packages/core.lisp")
 (load "/home/slytobias/lisp/packages/test.lisp")
 
-(defpackage :20-questions-struct (:use :common-lisp :lang :test))
+(defpackage :20-questions-struct (:use :common-lisp :core :test))
 
 (in-package :20-questions-struct)
 
@@ -40,6 +45,9 @@
 (defun reset ()
   (clrhash *nodes*))
 
+;;;
+;;;    NAME is only used in *NODES* to tie everything together. Not part of structure.
+;;;    
 (defun defnode (name contents &optional yes no)
   (setf (gethash name *nodes*)
         (make-node :contents contents

@@ -1,0 +1,122 @@
+Different representations of the "20 Questions" game. Yes/no questions follow paths through binary tree until
+terminal node is reached. Either the terminal node holds the target object or the network does not "know" the
+answer.
+
+
+================================================================================
+>> 20-questions-struct.lisp
+Graham's initial implementation. He defines a structured NODE type via DEFSTRUCT.
+The function DEFNODE calls the MAKE-NODE constructor and registers each node via its
+name in the *NODES* hashtable. The tree is traversed by calling RUN-NODE with the name
+of an initial node:
+
+(load "lincoln.lisp")
+(run-node 'people)
+
+[Graham's inteface is very brittle. Anything other than yes/YES is considered 'No'.]
+
+
+================================================================================
+>> lincoln.lisp
+The code above is topic agnostic. A specific network must be loaded separately.
+This file introduces a simple set of questions leading to Abraham Lincoln. The network is
+used for illustrative purposes only. Some of the paths lead to dead ends with missing nodes.
+
+
+================================================================================
+>> 20-questions-clos.lisp
+Really just a twist on the first version using CLOS rather than DEFSTRUCT. Two subclasses of NODE
+are defined to represent non-terminal (question) and terminal (answer) nodes.
+
+Nodes are registered with the *NODES* hashtable via the INITIALIZE-INSTANCE :AFTER method of the superclass.
+
+(load "lincoln-clos.lisp")
+(run-node 'people)
+
+
+================================================================================
+>> lincoln-clos.lisp
+A slightly different representation of the Lincoln network for use with the CLOS version above.
+
+
+================================================================================
+>> 20-questions-closure.lisp
+Graham's second implementation. Nodes are built as closures and registered in the *NODES* hashtable by name. 
+However, non-terminal and terminal nodes are represented by different kinds of functions.
+
+The names of yes/no branches are captured in the environment of each closure rather than as slots in a data structure.
+However, the branches must still be looked up in the *NODES* hashtable. There is no longer a RUN-NODE function. Simply
+call the function associated with any node name:
+
+(load "lincoln.lisp")
+(funcall (gethash 'people *nodes*))
+or
+(funcall (gethash 'us *nodes*))
+
+
+================================================================================
+>> 20-questions-closure-compiled.lisp
+Graham's final implementation. All nodes are compiled from the bottom up (leaves to root). Thus, each node contains
+direct references to its children, which no longer need to be stored in the *NODES* hashtable. Once compiled, the
+network stands alone.
+
+(load "mechanic.lisp")
+(defvar *mechanic* (compile-net 'diagnose-engine))
+(funcall *mechanic*)
+
+Downsides:
+- Opaque representation. Unlike struct/class instance, closure cannot be examined
+- No way to update network as it "learns" new facts?
+
+
+================================================================================
+>> animals.lisp
+An alternative network to lincoln.lisp. Suitable for any of Graham's implementations.
+
+
+================================================================================
+>> animals-clos.lisp
+An alternative to lincoln-clos.lisp. For use with the CLOS version.
+
+
+================================================================================
+>> mechanic.lisp
+An alternative network from Touretzky to diagnose engine problems. Compatible with Graham's implementations:
+(funcall (gethash 'diagnose-engine *nodes*))
+
+
+================================================================================
+>> network.lisp
+Alternative implementation using the CLOS definitions of NODEs.
+
+Graham states in the text that the networks for this type of game are binary trees. But he implements
+such trees via registering a mapping from names -> nodes in the *NODES* hashtable. The nodes themselves
+are only stored as the values of name keys in the hashtable.
+
+network.lisp is a more traditional tree implementation where each node contains actual links to its children.
+
+Question network is built from the bottom up with YES and NO slots referring to other nodes rather than just names.
+Network can easily be serialized.
+
+Lincoln example:
+(run-node (process-node '(people "Is the person a man?"
+                                 (male "Is he living?" 
+                                       (liveman nil)
+                                       (deadman "Was he American?"
+                                                (us "Is he on a coin?"
+                                                    (coin "Is the coin a penny?"
+                                                          (penny lincoln)
+                                                          (coins nil))
+                                                    (cidence nil))
+                                                (them nil)))
+                                 (female nil))))
+
+================================================================================
+>> bst-network.lisp
+Failed attempt to implement the network as a binary search tree.
+
+另见
+Slade ch. 9
+Tatar ch. 6
+Touretzky ch. 12
+PAIP ch. 3

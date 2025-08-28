@@ -21,27 +21,55 @@
 ;;;;
 ;;;;   Example:
 ;;;;
-;;;;   Notes:
+;;;;   Notes: Nodes are not structures but rather functions (closures).
+;;;;
+;;;;   Representation is more opaque!
+;;;;   (describe (gethash 'people *nodes*))                                              
+;;;;   #<FUNCTION (LAMBDA () :IN DEFNODE) {1003DC7E0B}>                                  
+;;;;     [compiled closure]                                                              
+;;;;                                                                                     
+;;;;                                                                                     
+;;;;   Lambda-list: ()                                                                   
+;;;;   Derived type: (FUNCTION NIL *)                                                    
+;;;;   Documentation:                                                                    
+;;;;     T                                                                               
+;;;;   Source file: /home/slytobias/lisp/books/OnLisp/2020/ch06/20-questions-closure.lisp
 ;;;;
 ;;;;
-(load "/home/slytobias/lisp/packages/lang.lisp")
+(load "/home/slytobias/lisp/packages/core.lisp")
+(load "/home/slytobias/lisp/packages/io.lisp")
 (load "/home/slytobias/lisp/packages/test.lisp")
 
-(defpackage :20-questions-closure (:use :common-lisp :lang :test))
+(defpackage :20-questions-closure (:use :common-lisp :core :io :test))
 
 (in-package :20-questions-closure)
 
 (defvar *nodes* (make-hash-table))
 
+;; (defun defnode (name contents &optional yes no)
+;;   (setf (gethash name *nodes*)
+;;         (if yes
+;;             #'(lambda ()
+;;                 (format t "~A~%>> " contents)
+;;                 (case (read)
+;;                   (yes (funcall (gethash yes *nodes*)))
+;;                   (t (funcall (gethash no *nodes*)))) )
+;;             #'(lambda () contents))))
+
+
+(defun make-prompt (s)
+  (format nil "~A~%>>" s))
+
+;(defun leafp (node)
 (defun defnode (name contents &optional yes no)
   (setf (gethash name *nodes*)
-        (if yes
-            #'(lambda ()
-                (format t "~A~%>> " contents)
-                (case (read)
-                  (yes (funcall (gethash yes *nodes*)))
-                  (t (funcall (gethash no *nodes*)))) )
-            #'(lambda () contents))))
+        (cond ((and yes no)
+               #'(lambda ()
+                   (if (confirm (make-prompt contents))
+                       (funcall (gethash yes *nodes*))
+                       (funcall (gethash no *nodes*)))) )
+              ((or yes no) (error "Missing branch"))
+              (t #'(lambda () contents)))) )
 
 (defun reset ()
   (clrhash *nodes*))
