@@ -2615,35 +2615,51 @@ Naive:
   rather a special case of mapping a function over the elements of a list
   that itself yields lists and joining those lists together: MAPCAN
 
+(sdraw *nicknames* :display-width 280)
+
+[*|*]--------------------------->[*|*]------------------------------------>[*|*]----------------------------->[*|*]------------------------------>[*|*]--------------------------->[*|*]------------------>[*|*]------------------->[*|*]--->NIL
+ |                                |                                         |                                  |                                   |                                |                       |                        |
+ v                                v                                         v                                  v                                   v                                v                       v                        v
+[*|*]--->[*|*]--->NIL            [*|*]--->[*|*]--->NIL                     [*|*]----->[*|*]--->NIL            [*|*]------>[*|*]--->NIL            [*|*]--->[*|*]--->NIL            [*|*]--->[*|*]--->NIL   [*|*]---->[*|*]--->NIL   [*|*]------>[*|*]--->NIL
+ |        |                       |        |                                |          |                       |           |                       |        |                       |        |              |         |              |           |
+ v        v                       v        v                                v          v                       v           v                       v        v                       v        v              v         v              v           v
+THOMAS   [*|*]--->[*|*]--->NIL   ROBERT   [*|*]--->[*|*]--->[*|*]--->NIL   THEODORE   [*|*]--->[*|*]--->NIL   CATHERINE   [*|*]--->[*|*]--->NIL   DAVID    [*|*]--->[*|*]--->NIL   EDWARD   [*|*]--->NIL   MICHAEL   [*|*]--->NIL   ELIZABETH   [*|*]--->[*|*]--->[*|*]--->NIL
+          |        |                       |        |        |                         |        |                          |        |                       |        |                       |                        |                          |        |        |
+          v        v                       v        v        v                         v        v                          v        v                       v        v                       v                        v                          v        v        v
+         TOM      TOMMY                   ROB      BOB      BOBBIE                    THEO     TED                        KATE     CATHY                   DAVE     DAVEY                    ED                      MIKE                       LIZ      LISA     LIZZIE
+
 Idiomatic:
 (mapcan #'nicknames '(michael edward david))
-  C-c C-c
+(MIKE ED DAVE DAVEY)
 
 Oops!
-(sdraw *nicknames* :display-width 200)
-[*|*]--------------------------->[*|*]------------------------------------>[*|*]----------------------------->[*|*]------------------------------>[*|*]------------------>[*|*]----->[*|*]--->etc.
- |                                |                                         |                                  |                                   |                       |          |
- v                                v                                         v                                  v                                   v                       v          v
-[*|*]--->[*|*]--->NIL            [*|*]--->[*|*]--->NIL                     [*|*]----->[*|*]--->NIL            [*|*]------>[*|*]--->NIL            [*|*]--->[*|*]--->NIL   etc.       etc.
- |        |                       |        |                                |          |                       |           |                       |        |
- v        v                       v        v                                v          v                       v           v                       v        v
-THOMAS   [*|*]--->[*|*]--->NIL   ROBERT   [*|*]--->[*|*]--->[*|*]--->NIL   THEODORE   [*|*]--->[*|*]--->NIL   CATHERINE   [*|*]--->[*|*]--->NIL   DAVID    [*|*]--->[*|*]--->[*|*]--->[*|*]--->etc.
-          |        |                       |        |        |                         |        |                          |        |                       |        |        |        |
-          v        v                       v        v        v                         v        v                          v        v                       v        v        v        v
-         TOM      TOMMY                   ROB      BOB      BOBBIE                    THEO     TED                        KATE     CATHY                   DAVE     DAVEY     ED      DAVE
+(sdraw *nicknames* :display-width 280)
 
-(sdraw (cddr *nicknames*) :display-width 200)
-[*|*]----------------------------->[*|*]------------------------------>[*|*]------------------>[*|*]----->[*|*]----->[*|*]--->NIL
- |                                  |                                   |                       |          |          |
- v                                  v                                   v                       v          v          v
-[*|*]----->[*|*]--->NIL            [*|*]------>[*|*]--->NIL            [*|*]--->[*|*]--->NIL   etc.       etc.       etc.
- |          |                       |           |                       |        |
- v          v                       v           v                       v        v
-THEODORE   [*|*]--->[*|*]--->NIL   CATHERINE   [*|*]--->[*|*]--->NIL   DAVID    [*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->[*|*]--->etc.
-            |        |                          |        |                       |        |        |        |        |        |        |        |        |        |        |        |
-            v        v                          v        v                       v        v        v        v        v        v        v        v        v        v        v        v
-           THEO     TED                        KATE     CATHY                   DAVE     DAVEY     ED      DAVE     DAVEY     ED      DAVE     DAVEY     ED      DAVE     DAVEY     ED
+[*|*]--------------------------->[*|*]------------------------------------>[*|*]----------------------------->[*|*]------------------------------>[*|*]--------------------------->[*|*]------------------------------------>[*|*]------------------->[*|*]--->NIL
+ |                                |                                         |                                  |                                   |                                |                                         |                        |
+ v                                v                                         v                                  v                                   v                                v                                         v                        v
+[*|*]--->[*|*]--->NIL            [*|*]--->[*|*]--->NIL                     [*|*]----->[*|*]--->NIL            [*|*]------>[*|*]--->NIL            [*|*]--->[*|*]--->NIL            [*|*]--->[*|*]--->NIL                     [*|*]---->[*|*]--->NIL   etc.
+ |        |                       |        |                                |          |                       |           |                       |        |                       |        |                                |         |
+ v        v                       v        v                                v          v                       v           v                       v        v                       v        v                                v         v
+THOMAS   [*|*]--->[*|*]--->NIL   ROBERT   [*|*]--->[*|*]--->[*|*]--->NIL   THEODORE   [*|*]--->[*|*]--->NIL   CATHERINE   [*|*]--->[*|*]--->NIL   DAVID    [*|*]--->[*|*]--->NIL   EDWARD   [*|*]--->[*|*]--->[*|*]--->NIL   MICHAEL   [*|*]--->[*|*]--->[*|*]--->[*|*]--->NIL
+          |        |                       |        |        |                         |        |                          |        |                       |        |                       |        |        |                        |        |        |        |
+          v        v                       v        v        v                         v        v                          v        v                       v        v                       v        v        v                        v        v        v        v
+         TOM      TOMMY                   ROB      BOB      BOBBIE                    THEO     TED                        KATE     CATHY                   DAVE     DAVEY                    ED      DAVE     DAVEY                    MIKE      ED      DAVE     DAVEY
 
+(sdraw (cddr *nicknames*) :display-width 280)
+
+[*|*]----------------------------->[*|*]------------------------------>[*|*]--------------------------->[*|*]------------------------------------>[*|*]---------------------------------------------->[*|*]--->NIL
+ |                                  |                                   |                                |                                         |                                                   |
+ v                                  v                                   v                                v                                         v                                                   v
+[*|*]----->[*|*]--->NIL            [*|*]------>[*|*]--->NIL            [*|*]--->[*|*]--->NIL            [*|*]--->[*|*]--->NIL                     [*|*]---->[*|*]--->NIL                              [*|*]------>[*|*]--->NIL
+ |          |                       |           |                       |        |                       |        |                                |         |                                         |           |
+ v          v                       v           v                       v        v                       v        v                                v         v                                         v           v
+THEODORE   [*|*]--->[*|*]--->NIL   CATHERINE   [*|*]--->[*|*]--->NIL   DAVID    [*|*]--->[*|*]--->NIL   EDWARD   [*|*]--->[*|*]--->[*|*]--->NIL   MICHAEL   [*|*]--->[*|*]--->[*|*]--->[*|*]--->NIL   ELIZABETH   [*|*]--->[*|*]--->[*|*]--->NIL
+            |        |                          |        |                       |        |                       |        |        |                        |        |        |        |                          |        |        |
+            v        v                          v        v                       v        v                       v        v        v                        v        v        v        v                          v        v        v
+           THEO     TED                        KATE     CATHY                   DAVE     DAVEY                    ED      DAVE     DAVEY                    MIKE      ED      DAVE     DAVEY                      LIZ      LISA     LIZZIE
+
+Calling (mapcan #'nicknames '(michael edward david)) again goes into infinite loop with circular list!!
 
 Could rewrite ALL-NICKNAMES with APPEND rather than NCONC, but what about MAPCAN??
 
@@ -6883,6 +6899,13 @@ Chapter 7
 ============================================================================
 ☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆
 ============================================================================
+250906 土
+Preface vi 页
+"One of the aims of this book is to collect in one place 
+ all that people have till now had to learn from experience about macros."
+
+Ch. 7-10 Complete tutorial on macro technique
+
 250822 金
 Macros - define operators that are implemented by transformation
 
@@ -6905,26 +6928,77 @@ Macro NIL! sets argument to NIL
 (defmacro nil! (var)
   (list 'setf var nil))
 
+Single expansion step:
 (macroexpand-1 '(nil! x))
 (SETF X NIL)
 T
+
+Full expansion--SETF is itself a macro:
 (macroexpand '(nil! x))
 (SETQ X NIL)
 T
 
+CLHS says:
+    In effect, macroexpand calls macroexpand-1 repeatedly until the secondary value it returns is nil. 
+
+The place being set to NIL can be specified by arbitrary expression:
 (macroexpand-1 '(nil! (aref a i)))
 (SETF (AREF A I) NIL)
 T
-* (macroexpand '(nil! (aref a i)))
+
+More complicated full expansion:
+(macroexpand '(nil! (aref a i)))
 (LET* ((#:A2108 A) (#:I2109 I) (#:NEW2107 NIL))
   (FUNCALL #'(SETF AREF) #:NEW2107 #:A2108 #:I2109))
 T
 
+By contrast, consider a function that builds the same expression:
+(defun nil? (var)
+  (list 'setf var nil))
 
+(nil? 'x) => (SETF X NIL) ; This list is returned but not evaluated.
+       ^
+       |
+       |
+       Must quote symbol as part of function evaluation.
+
+[*|*]--->[*|*]--->NIL
+ |        |
+ v        v
+NIL?     [*|*]--->[*|*]--->NIL
+          |        |
+          v        v
+         QUOTE     X
+
+Alternative definition of NIL! using helper function:
+(defmacro nil! (var)
+  (nil? var))
+
+Exactly same behavior as before:
+(macroexpand-1 '(nil! x))
+(SETF X NIL)
+T
+
+Possible to observe the expansion:
+(trace nil?)
+(NIL?)
+
+(macroexpand-1 '(nil! x))
+  0: (NIL? X)
+  0: NIL? returned (SETF X NIL)
+(SETF X NIL)
+T
+
+Below we will see a more convenient way to write the template list structure using backquote (`):
+(defmacro nil! (var)
+  `(setf ,var nil))
+-------------------------------------------
+Form created              Expansion for EVAL:
+by reader:
 [*|*]--->[*|*]--->NIL  => [*|*]--->[*|*]--->[*|*]--->NIL
  |        |                |        |        |          
  v        v                v        v        v          
-NIL!      X               SETF      X       NIL
+NIL!      X               SETF      X       NIL          
 
  ^
  |
@@ -6932,20 +7006,22 @@ NIL!      X               SETF      X       NIL
  Macro form. CAR names macro.
 
 https://www.lispworks.com/documentation/HyperSpec/Body/03_ababb.htm
-3.1.2.1.2.2 Macro Forms
+    3.1.2.1.2.2 Macro Forms                                                                                                     
+                                                                                                                                
+    If the operator names a macro, its associated macro function is applied to the entire form                                  
+    and the result of that application is used in place of the original form.                                                   
+                                                                                                                                
+    The function returned by MACRO-FUNCTION is a function of two arguments, called the expansion function.                      
+                                                                                                                                
+    The expansion function is invoked by calling the macroexpand hook with the expansion function as its first argument,        
+    the entire macro form as its second argument, and an environment object (corresponding to the current lexical environment)  
+    as its third argument.                                                                                                      
+                                                                                                                                
+    The macroexpand hook, in turn, calls the expansion function with the form as its first argument and                         
+    the environment as its second argument. The value of the expansion function, which is passed through                        
+    by the macroexpand hook, is a form. The returned form is evaluated in place of the original form.
 
-If the operator names a macro, its associated macro function is applied to the entire form
-and the result of that application is used in place of the original form. 
-
-The function returned by MACRO-FUNCTION is a function of two arguments, called the expansion function.
-
-The expansion function is invoked by calling the macroexpand hook with the expansion function as its first argument,
-the entire macro form as its second argument, and an environment object (corresponding to the current lexical environment)
-as its third argument.
-
-The macroexpand hook, in turn, calls the expansion function with the form as its first argument and
-the environment as its second argument. The value of the expansion function, which is passed through
-by the macroexpand hook, is a form. The returned form is evaluated in place of the original form. 
+MACRO-FUNCTION and SYMBOL-FUNCTION return different values???
 
 (describe (macro-function 'nil!))
 #<FUNCTION (MACRO-FUNCTION NIL!) {B800D08A0B}>
@@ -6976,13 +7052,8 @@ Derived type: (FUNCTION (&REST T) NIL)
 Documentation:
   T
 Source file: SYS:SRC;CODE;SIMPLE-FUN.LISP
-
-
-
-
-
-
-
+-------------------------------------------
+DEFMACRO is itself a macro. DEFMACRO forms can be expanded:
 (macroexpand-1 '(defmacro nil! (var)
                   (list 'setf var nil)))
 
@@ -7001,11 +7072,13 @@ Source file: SYS:SRC;CODE;SIMPLE-FUN.LISP
                         (DECLARE (SB-C::CONSTANT-VALUE VAR))
                         (BLOCK NIL! (LIST 'SETF VAR NIL))))
                     (SB-C:SOURCE-LOCATION))))
-
-
+-------------------------------------------
 Variable *MACROEXPAND-HOOK* [https://www.lispworks.com/documentation/HyperSpec/Body/v_mexp_h.htm]
   a designator for a function that is equivalent to the function FUNCALL,
   but that might have additional implementation-dependent side-effects.
+
+Define a custom macroexpansion hook that only treats NIL! forms specially:
+(Don't want to debug every macro expansion!!!)
 
 (defun hook (expander form env)
   (when (eq (first form) 'nil!)
@@ -7013,69 +7086,64 @@ Variable *MACROEXPAND-HOOK* [https://www.lispworks.com/documentation/HyperSpec/B
     (format t "Expansion function: ~S~%" expander)
     (describe expander)
     (format t "Environment: ~S~%" env))
-  (funcall expander form env))
+  (funcall expander form env))                          <---- End with normal call to FUNCALL with 3 args: expander function, full form to expand, environment
 
+(setf *macroexpand-hook* #'hook)
 
-
-
-
-
-
-By contrast, consider a function that builds the same expression:
-(defun nil? (var)
-  (list 'setf var nil))
-
-(nil? 'x) => (SETF X NIL)
-       ^
-       |
-       |
-       Must quote symbol as part of function evaluation.
-
-[*|*]--->[*|*]--->NIL
- |        |
- v        v
-NIL?     [*|*]--->[*|*]--->NIL
-          |        |
-          v        v
-         QUOTE     X
-
-
-
-
-Alternative definition of NIL! using helper function:
-(defmacro nil! (var)
-  (nil? var))
-
-Exactly same behavior as before:
 (macroexpand-1 '(nil! x))
+Expanding: (NIL! X)
+Expansion function: #<FUNCTION (MACRO-FUNCTION NIL!) {B800D08A0B}>       <---- FORMAT
+#<FUNCTION (MACRO-FUNCTION NIL!) {B800D08A0B}>                           <---- DESCRIBE
+  [compiled function]
+
+
+Lambda-list: (VAR)
+Derived type: (FUNCTION (T T) (VALUES CONS &OPTIONAL))
+Documentation:
+  T
+Source form:
+  (LAMBDA (#1=#:EXPR #2=#:ENV)
+    (DECLARE (SB-C::LAMBDA-LIST (VAR)))
+    (DECLARE (IGNORE #2#))
+    (SB-INT:NAMED-DS-BIND (:MACRO NIL! . DEFMACRO)
+        (VAR)
+        (CDR #1#)
+      (DECLARE (SB-C::CONSTANT-VALUE VAR))
+      (BLOCK NIL! `(SETF ,VAR NIL))))
+Environment: NIL
+(SETF X NIL)                                                            <---- Expansion (Result of MACROEXPAND-1)
+T
+-------------------------------------------
+Puzzling expansion results...
+
+READ-EVAL-PRINT loop
+Expectation
+1. READ Build form from S-expression
+2. EVAL Macro form detected -> expand first then evaluate result
+
+Apparently (SBCL anyway) compiles before evaluation! Must expand all macro forms.
+
+Start with default *MACROEXPAND-HOOK*:
+(setf *macroexpand-hook* #'funcall)
+
+Call to MACROEXPAND-1 function occurs after LET binding of *MACROEXPAND-HOOK*:
+(let ((*macroexpand-hook* #'hook)) (macroexpand-1 '(nil! x)))        <---- Call MACROEXPAND-1 explicitly
+Expanding: (NIL! X)
+Expansion function: #<FUNCTION (MACRO-FUNCTION NIL!) {B800D08A0B}>
+...
+Environment: NIL
 (SETF X NIL)
 T
 
-Possible to observe the expansion:
-(trace nil?)
-(NIL?)
+Actually using the NIL! macro:
+(let ((*macroexpand-hook* #'hook)) (let ((y 2)) (nil! y) y))         <---- MACROEXPAND-1 called indirectly for expansion
+NIL
 
-(macroexpand-1 '(nil! x))
-  0: (NIL? X)
-  0: NIL? returned (SETF X NIL)
-(SETF X NIL)
-T
+HOOK function is ignored! Expansion occurs during compilation prior to evaluating LET form.
+-------------------------------------------
+By contrast, consider changes to reader's environment:
 
-
-
-
-
-
-(defmacro nil! (var)
-  `(setf ,var nil))
-
-
-
-
-
-
-
-(let ((*read-base* 2)) (let ((8 9.)) (print 8)))
+(let ((*read-base* 2)) (let ((8 9.)) (print 8)))                     <---- Reader does not see binding.
 ; in: LET ((*READ-BASE* 2))
 ;     (8 9)
 ; 
@@ -7085,30 +7153,106 @@ T
 ; compilation unit finished
 ;   caught 1 ERROR condition
 
-(setf *read-base* 2)
-(let ((8 9.)) (print 8))
+(setf *read-base* 2) ; Base changed before subsequent read
+(let ((8 9.)) (print 8)) ; 8 is symbol not number
 
 9 
 9
+-------------------------------------------
+SBCL expands prior to evaluation??
 
+Try the opposite. Set custom *MACROEXPAND-HOOK*:
+(setf *macroexpand-hook* #'hook)
 
-Expands prior to evaluation??
-
-(let ((*macroexpand-hook* (progn (format t "foo!~%") #'funcall))) (let ((y 2)) (nil! y) y))
+LET binding should output "foo!" and restore FUNCALL as *MACROEXPAND-HOOK*:
+(let ((*macroexpand-hook* (progn (format t "foo!~%") #'funcall)))      <---- Sneak debugging output in as part of binding
+  (let ((y 2)) (nil! y) y))
 Expanding: (NIL! Y)
 Expansion function: #<FUNCTION (MACRO-FUNCTION NIL!) {B800D08A0B}>
 #<FUNCTION (MACRO-FUNCTION NIL!) {B800D08A0B}>
   [compiled function]
 ...
+foo!              <---- Output from evaluating LET occurs after form is compiled (with HOOK in effect as *MACROEXPAND-HOOK*)
+NIL
+
+Graham first discusses macro expansion of a top-level form:
+1. Typing (nil! x) into REPL, reader builds form
+[*|*]--->[*|*]--->NIL
+ |        |             
+ v        v          
+NIL!      X
+2. This is passed to EVAL, which determines that this is a macro form (CAR NIL! names a macro), so
+expansion is generated:
+[*|*]--->[*|*]--->[*|*]--->NIL
+ |        |        |          
+ v        v        v          
+SETF      X       NIL
+3. This form, (setf x nil), is evaluated instead of the original--as though this were what was originally typed by user.
+
+He points out that expansion must precede evaluation (Lisp only knows how to evaluate functions and special operators),
+but evaluation does not always come _immediately_ after expansion as with toplevel. He specifically calls out compiling
+function definitions: when a function is compiled any macro forms within it will be expanded, but the function has not
+yet been called.
+
+This also appears to apply to the LET form above. The contained NIL! form cannot be evaluated until expanded, and the compiler
+apparently does this prior to beginning evaluation of the containing LET form.
+-------------------------------------------
+CLISP, as an interpreter, behaves differently:
+With HOOK installed as the *MACROEXPAND-HOOK* value
+
+(let ((*macroexpand-hook* (progn (format t "foo!~%") #'funcall))) (let ((y 2)) (nil! y) y))
 foo!
 NIL
 
+(let ((y 2)) (nil! y) y)
+Expanding: (NIL! Y)
+Expansion function: 
+#<FUNCTION NIL! (SYSTEM::<MACRO-FORM> SYSTEM::<ENV-ARG>) (DECLARE (CONS SYSTEM::<MACRO-FORM>)) (DECLARE (IGNORE SYSTEM::<ENV-ARG>))
+  (IF (NOT (SYSTEM::LIST-LENGTH-IN-BOUNDS-P SYSTEM::<MACRO-FORM> 2 2 NIL)) (SYSTEM::MACRO-CALL-ERROR SYSTEM::<MACRO-FORM>) (LET* ((VAR (CADR SYSTEM::<MACRO-FORM>))) (BLOCK NIL! `(SETF ,VAR NIL))))>
 
+#<FUNCTION NIL! (SYSTEM::<MACRO-FORM> SYSTEM::<ENV-ARG>) (DECLARE (CONS SYSTEM::<MACRO-FORM>)) (DECLARE (IGNORE SYSTEM::<ENV-ARG>)) ...> is an interpreted function.
+Argument list: (SYSTEM::<MACRO-FORM> SYSTEM::<ENV-ARG>)
+Environment: #(#(Y 2 NIL) NIL)
+NIL
+-------------------------------------------
+ABCL behaves the same as CLISP.
+Clozure shows the same behavior as SBCL.
 
+CMUCL goes into a stack overflow?!?
+Until HOOK is compiled! Then it behaves like SBCL/Clozure:
+(setq *macroexpand-hook* #'funcall) ; Have to use SETQ here since SETF triggers expansion!!
 
+#<Function FUNCALL {10128909}>
 
+(compile 'hook)
+; Compiling LAMBDA (EXPANDER FORM ENV): 
+; Compiling Top-Level Form: 
+
+HOOK
+NIL
+NIL
+
+(setf *macroexpand-hook* #'hook)
+
+#<Function HOOK {69201B11}>
+
+(macroexpand-1 '(nil! x))
+Expanding: (NIL! X)
+Expansion function: #<Interpreted Function NIL! {791D9E01}>
+#<Interpreted Function NIL! {791D9E01}> is a function.
+Arguments:
+  (VAR)
+Its defined argument types are:
+  (&REST T)
+Its result type is:
+  NIL
+Its definition is:
+  (LAMBDA (#:WHOLE-3130 #:ENV-3131) (DECLARE #) (BLOCK NIL! #))Environment: NIL
+(SETF X NIL)
+T
+-------------------------------------------
 Macro expansion may involve multiple levels of expansion before code is fully resolved
-into special operators/functions:
+into special operators/functions. Graham likens this to Russian dolls that contain other dolls.
 (macroexpand-1 '(cond ((evenp x) 'even) ((oddp x) 'odd) (t 'huh?)))
 (IF (EVENP X)
     'EVEN
@@ -7132,12 +7276,55 @@ T
     'EVEN)
 T
 
+Two observations:
+1. People are often confused about the difference between MACROEXPAND and MACROEXPAND-1.
+MACROEXPAND-1 only executes one level of expansion. We saw that earlier with NIL!
 
+(macroexpand-1 '(nil! x))
+(SETF X NIL)
+T
 
+Full expansion--SETF is itself a macro:
+(macroexpand '(nil! x))
+(SETQ X NIL)
+T
 
+(defun hook (expander form env)
+  (format t "Expanding: ~S~%" form)
+  (when (eq (first form) 'nil!)
+    (format t "Expansion function: ~S~%" expander)
+    (describe expander)
+    (format t "Environment: ~S~%" env))
+  (funcall expander form env))
 
+(let ((*macroexpand-hook* #'hook)) (macroexpand-1 '(nil! x)))
+Expanding: (NIL! X)
+...
+(SETF X NIL)
 
+(let ((*macroexpand-hook* #'hook)) (macroexpand '(nil! x)))
+Expanding: (NIL! X)
+...
+Expanding: (SETF X NIL)
+(SETQ X NIL)
+T
 
+Only concerns outermost form though
+(macroexpand-1 '(or (and (evenp x) 'even) (and (oddp x) 'odd) 'huh?))
+(LET ((#:G2105 (AND (EVENP X) 'EVEN)))                <---- Unexpanded AND
+  (IF #:G2105
+      #:G2105
+      (LET ((#:G2106 (AND (ODDP X) 'ODD)))            <---- Unexpanded AND
+        (IF #:G2106
+            #:G2106
+            'HUH?))))
+T
+
+Exactly same result for MACROEXPAND since result is LET regardless of nested AND macros forms.
+
+2. This is different for the compilation process as discussed above. All macros must be _fully_
+expanded. That is, any macro form at any level of the form being compiled (prior to evaluation)
+must be expanded.
 
 ----------------------------------------------------------------------------
 240514 火
