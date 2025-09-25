@@ -6899,6 +6899,24 @@ Chapter 7
 ============================================================================
 ☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆☆
 ============================================================================
+250913 土
+Touretzky (405 页):
+    Think of macros as the computer equivalent of shorthand. Anything you write 
+    in shorthand can also be written in plain English; it just takes longer.    
+    Similarly, Common Lisp macros don’t let you say anything that can’t be      
+    expressed with ordinary functions, but they do help you to say things more  
+    concisely.
+
+But Seibel (83 页) describes the power/efficiency/clarity achievable through the
+proper use of macros as the "have-your-cake-and-eat-it-too style of programming".
+
+Macros don't allow you to write code that you _couldn't_ write otherwise. Instead,
+they allow you to write code that you _wouldn't_ write.
+
+In chapter 8, Seibel (102 页) shows how to define simple macros "that save you a bit of typing
+but don't provide radical new ways of expressing things". But he points out that there are more powerful
+macros in later chapters "that allow you to express things in ways that would be virtually impossible without macros".
+
 250906 土
 Preface vi 页
 "One of the aims of this book is to collect in one place 
@@ -7005,6 +7023,13 @@ NIL!      X               SETF      X       NIL
  |
  Macro form. CAR names macro.
 
+CLHS Glossary
+[https://www.lispworks.com/documentation/HyperSpec/Body/26_glo_m.htm#macro_form]
+macro form n. a form that stands for another form (e.g., for the purposes of abstraction,
+              information hiding, or syntactic convenience); that is, either a compound form
+              whose first element is a macro name, or a form that is a symbol that names a symbol macro. 
+
+
 https://www.lispworks.com/documentation/HyperSpec/Body/03_ababb.htm
     3.1.2.1.2.2 Macro Forms                                                                                                     
                                                                                                                                 
@@ -7020,6 +7045,13 @@ https://www.lispworks.com/documentation/HyperSpec/Body/03_ababb.htm
     The macroexpand hook, in turn, calls the expansion function with the form as its first argument and                         
     the environment as its second argument. The value of the expansion function, which is passed through                        
     by the macroexpand hook, is a form. The returned form is evaluated in place of the original form.
+
+
+      (Entire)        +------------------+          
+   Original Form ---->|                  |          
+                      |Expansion function|----> Form
+     Environment ---->|                  |          
+                      +------------------+          
 
 MACRO-FUNCTION and SYMBOL-FUNCTION return different values???
 
@@ -7200,6 +7232,7 @@ apparently does this prior to beginning evaluation of the containing LET form.
 CLISP, as an interpreter, behaves differently:
 With HOOK installed as the *MACROEXPAND-HOOK* value
 
+(let ((*macroexpand-hook* #'funcall)) (let ((y 2)) (nil! y) y))
 (let ((*macroexpand-hook* (progn (format t "foo!~%") #'funcall))) (let ((y 2)) (nil! y) y))
 foo!
 NIL
@@ -7325,6 +7358,58 @@ Exactly same result for MACROEXPAND since result is LET regardless of nested AND
 2. This is different for the compilation process as discussed above. All macros must be _fully_
 expanded. That is, any macro form at any level of the form being compiled (prior to evaluation)
 must be expanded.
+----------------------------------------------------------------------------
+250911 木
+§7.2 Backquote
+
+
+
+
+
+
+
+CLHS §2.4.6 Backquote
+https://www.lispworks.com/documentation/HyperSpec/Body/02_df.htm
+`(a b c) -> `(a b c . nil) -> (append (list `a) (list `b) (list `c) 'nil) -> (append (list 'a) (list 'b) (list 'c) '())
+
+(defun f () '(a b c))
+(defun g () `(a b c))
+(defun g1 () (append (list `a) (list `b) (list `c) '()))
+(defun h () (list 'a 'b 'c))
+
+(eq (f) (f)) => T
+(eq (g) (g)) => T  ; ?????
+(eq (g1) (g1)) => NIL
+(eq (h) (h)) => NIL
+
+
+(f) => (A B C)
+(setf (rest (f)) '(x y))
+(f) => (A X Y)
+
+(g) => (A B C)
+(setf (rest (g)) '(x y))
+(g) => (A X Y) ; ????????
+
+(g1) => (A B C)
+(setf (rest (g1)) '(x y))
+(g1) => (A B C)
+
+(h) => (A B C)
+(setf (rest (h)) '(x y))
+(h) => (A B C)
+
+CLHS §3.7.1 Modification of Literal Objects
+https://www.lispworks.com/documentation/HyperSpec/Body/03_ga.htm
+
+    The consequences are undefined if literal objects are destructively modified.        
+    For this purpose, the following operations are considered destructive:               
+                                                                                         
+    cons Changing the car[1] or cdr[1] of the cons, or performing a destructive operation
+         on an object which is either the car[2] or the cdr[2] of the cons.              
+
+
+
 
 ----------------------------------------------------------------------------
 240514 火
